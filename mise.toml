@@ -1,0 +1,43 @@
+# Keeper（留影）工具链与命令定义
+# 版本锁在 [tools]（必须钉死具体版本，禁止 latest）；命令定义为 [tasks.*]。
+# 一律用 `mise run <task>`，不要直接调底层命令。
+#
+# 这是一个 monorepo：
+#   sidecar/        Python 本地推理服务（分组 / 硬废片 / 组内排序 / 大模型打分）
+#   apps/desktop/   Tauri 桌面应用（Vue3 + TS 前端 + Rust 壳）
+# 两个组件各自启动，所以启动 task 按场景拆成 sidecar / app，不塞进一个 run。
+
+[tools]
+python = "3.11.15"       # sidecar 的 pyproject 要求 >=3.11,<3.14；钉死具体版本保证可复现
+uv = "0.11.20"           # Python 依赖管理与解析统一走 uv
+node = "24.16.0"         # 前端 / Tauri 构建
+pnpm = "10.11.0"         # 前端包管理器（首次 `mise install` 若版本不可用，按提示改成最近的可用版）
+rust = "1.87.0"          # Tauri 壳编译（首次 `mise install` 触发安装；可按需改具体版）
+
+[tasks.install]
+description = "安装全部依赖：sidecar 的 Python 依赖 + desktop 的前端依赖"
+# desktop 尚未 scaffold 前，第二条会因缺少 package.json 失败——scaffold 完成后即可正常使用。
+run = [
+    "uv sync --directory sidecar",
+    "pnpm --dir apps/desktop install",
+]
+
+[tasks.sidecar]
+description = "启动本地推理服务（FastAPI，默认 127.0.0.1）；透传参数：mise run sidecar -- --port 8761"
+dir = "sidecar"
+run = "uv run python -m keeper_engine.server"
+
+[tasks.app]
+description = "启动 Tauri 桌面应用（开发模式，自动起前端 + 壳）"
+dir = "apps/desktop"
+run = "pnpm tauri dev"
+
+[tasks.test]
+description = "跑 sidecar 测试；可指定文件/用例：mise run test -- tests/test_grouping.py"
+dir = "sidecar"
+run = "uv run pytest"
+
+[tasks.lint]
+description = "sidecar 代码风格检查"
+dir = "sidecar"
+run = "uv run ruff check ."
