@@ -29,6 +29,8 @@ FACE_BLUR = 150.0                  # 主脸锐度低于此 → 人脸偏糊
 EYES_CLOSED_EAR = 0.18            # 主脸 EAR 低于此 → 闭眼
 DET_MIN = 0.5                      # 人脸最低置信度（低于此当背景误检）
 FACE_MIN_AREA = 0.005             # 人脸面积占比下限（闭眼/糊脸规则才适用）
+FACE_IQA_MIN_AREA = 0.03          # 主脸面积占比低于此 → 不用人脸IQA、回退整图 topiq_nr
+                                   # （小脸被 topiq_nr-face 放大到 512² 后细节少、易误判低分）
 DARK_MEAN = 45.0                   # 均值亮度低于此 → 欠曝
 BRIGHT_MEAN = 210.0                # 均值亮度高于此 → 过曝
 CLIP_DARK_RATIO = 0.45            # 死黑像素占比高于此 → 欠曝
@@ -56,11 +58,13 @@ def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> Loc
     exposure = signals.exposure_signals(gray)
     ent = signals.entropy(gray)
 
-    # 技术质量：有脸用 TOPIQ-nr-face 评人脸裁剪（人像更贴合），无脸用通用 TOPIQ-nr 评整图。
-    # topiq_nr-face 内部自带人脸检测，检不到会 AssertionError——此时回退通用 topiq_nr（不视为失败）。
+    # 技术质量：主脸够大用 TOPIQ-nr-face 评人脸裁剪（人像更贴合），否则用通用 TOPIQ-nr 评整图。
+    #  - 小脸（占比 < FACE_IQA_MIN_AREA）回退：放大到 512² 细节少，人脸IQA 易误判低分。
+    #  - topiq_nr-face 内部自带人脸检测，检不到会 AssertionError——也回退（不视为失败）。
     # 注意：只接 AssertionError；模型加载失败抛的 VisionUnavailable 仍照常上抛，不静默降级。
     tech, tech_source = None, "topiq_nr"
-    if main is not None:
+    use_face_iqa = main is not None and main.get("_area_ratio", 0) >= FACE_IQA_MIN_AREA
+    if use_face_iqa:
         try:
             tech = _clamp01(vision.topiq_face_score(_crop_face(img, main["bbox"])))
             tech_source = "topiq_nr-face"

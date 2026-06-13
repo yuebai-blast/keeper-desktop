@@ -61,6 +61,21 @@ def test_face_iqa_falls_back_when_no_face_detected(monkeypatch, noise_image):
     assert ls.score > 0.0  # 成功回退、正常打分，未抛异常
 
 
+def test_small_face_falls_back_to_topiq_nr(monkeypatch, noise_image):
+    """主脸占比 < FACE_IQA_MIN_AREA(3%) 时，不用人脸IQA，回退整图 topiq_nr。"""
+    # 200×200 图里 30×30 的脸 = 900/40000 = 2.25% < 3%
+    face = {"bbox": (0, 0, 30, 30), "det_score": 0.9,
+            "embedding": None, "kps": None, "landmark_2d_68": None}
+    monkeypatch.setattr(vision, "extract_faces", lambda img: [face])
+    monkeypatch.setattr(vision, "eye_open_score", lambda f: 0.3)
+    monkeypatch.setattr(vision, "topiq_score", lambda img: 0.7)
+    monkeypatch.setattr(vision, "topiq_face_score",
+                        lambda img: (_ for _ in ()).throw(RuntimeError("不该被调用")))
+    monkeypatch.setattr(vision, "clipiqa_plus_score", lambda img: 0.6)
+    ls = prescreen.assess_photo(noise_image)
+    assert ls.detail.tech_source == "topiq_nr"  # 走了回退，没调人脸IQA
+
+
 def test_closed_eyes_flagged(monkeypatch, noise_image):
     face = {
         "bbox": (50, 50, 150, 150), "det_score": 0.9,
