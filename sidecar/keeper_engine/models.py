@@ -14,16 +14,55 @@ class Group(BaseModel):
     photos: list[str] = Field(description="组内照片的本地绝对路径")
 
 
+class FaceDetail(BaseModel):
+    """主脸的人脸信号（供前端透明展示）。无脸时 count=0、其余为 None。"""
+
+    count: int = Field(description="高置信人脸数")
+    main_area_ratio: float | None = Field(default=None, description="主脸面积占整图比例")
+    main_det_score: float | None = Field(default=None, description="主脸检测置信度")
+    main_sharpness: float | None = Field(default=None, description="主脸区拉普拉斯方差（越大越锐）")
+    main_eye_ear: float | None = Field(default=None, description="主脸 EAR；None=未知/不可靠")
+
+
+class Penalty(BaseModel):
+    """一条触发的扣分项（中文原因 + 扣的分）。"""
+
+    reason: str
+    points: float
+
+
+class ScoreDetail(BaseModel):
+    """层① 单张照片的完整评分明细——所有能给前端看的中间信号都在这。"""
+
+    base: float = Field(description="扣分前的基础分（0–100）")
+    tech_quality: float = Field(description="技术质量分 0–1")
+    tech_source: str = Field(description="技术质量来源：topiq_nr-face（有脸）或 topiq_nr（无脸）")
+    clipiqa: float = Field(description="CLIP-IQA+ 美学分 0–1")
+    sharpness: float | None = Field(default=None, description="主体锐度原始值（拉普拉斯方差）")
+    sharpness_norm: float = Field(description="主体锐度归一到 0–1")
+    entropy: float = Field(description="灰度信息熵 0–8")
+    brightness_mean: float
+    contrast: float
+    underexposed_ratio: float
+    overexposed_ratio: float
+    face: FaceDetail
+    penalties: list[Penalty] = Field(default_factory=list, description="所有触发的扣分项")
+
+
 class LocalScore(BaseModel):
-    """层① 本地模型对单张照片的 0–100 技术质量分 + 可解释理由。
+    """层① 本地模型对单张照片的 0–100 技术质量分 + 可解释理由 + 完整明细。
 
     评分以技术质量为主（锐度 / 曝光 / 人脸 / IQA 美学）。这一层走 `apply_funnel`
     用保底数 M 筛选，通过的进入层②（大模型）；详见 docs/product-flow.md。
+    `detail` 携带全部中间信号，供前端透明展示去留理由。
     """
 
     path: str
     score: float = Field(ge=0, le=100)
-    reason: str = Field(default="", description="中文短理由，如「脱焦」「闭眼」")
+    primary_reason: str = Field(
+        default="", description="头条理由（最高优先级的一条，如「脱焦」「闭眼」；全部见 detail.penalties）"
+    )
+    detail: ScoreDetail | None = Field(default=None, description="完整评分明细")
 
 
 class Score(BaseModel):
@@ -80,12 +119,20 @@ class PhotoError(BaseModel):
     error: str
 
 
+class SurvivorEntry(BaseModel):
+    """通过层① 漏斗、进入层② 的一张候选 + 它为何通过（达标 / 兜底补入）。"""
+
+    path: str
+    score: float
+    origin: PkOrigin = Field(description="passed=分≥60达标；quota_fill=<60但按保底数补入")
+
+
 class AssessResponse(BaseModel):
-    """层① 评分结果：每张分数 + 漏斗收口后的 survivors（进层②候选）。"""
+    """层① 评分结果：每张分数明细 + 漏斗收口后的 survivors（进层②候选）。"""
 
     group_id: str
     scores: list[LocalScore]
-    survivors: list[str] = Field(description="apply_funnel(scores, M) 通过的路径")
+    survivors: list[SurvivorEntry] = Field(description="apply_funnel(scores, M) 通过的候选 + 来源")
     n: int = Field(description="基础保底数 N")
     m: int = Field(description="层① 保底数 M = ceil(1.5N)")
     errors: list[PhotoError] = Field(default_factory=list)

@@ -35,8 +35,9 @@ def test_assess_wires_funnel_and_params(monkeypatch):
 
     resp = server.assess(_req(*scores))
     assert resp.n == 3 and resp.m == 5            # N=max(2,3)=3, M=ceil(4.5)=5
-    # 达标 6 张 > M(5) → 6 张全过，按分降序
-    assert resp.survivors == ["p0", "p1", "p2", "p3", "p4", "p5"]
+    # 达标 6 张 > M(5) → 6 张全过，按分降序，且都标 passed（分≥60）
+    assert [s.path for s in resp.survivors] == ["p0", "p1", "p2", "p3", "p4", "p5"]
+    assert all(s.origin == "passed" for s in resp.survivors)
     assert resp.errors == []
 
 

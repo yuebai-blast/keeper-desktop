@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 
 from . import imaging, signals, vision
-from .models import Group, LocalScore
+from .models import FaceDetail, Group, LocalScore, Penalty, ScoreDetail
 
 # ── 可调阈值（锐度类指标在 768 长边灰度上计算）──────────────────────────────
 SHARP_LOG_REF = math.log1p(400.0)  # 主体锐度归一参考：log1p(var)/此值 → ~[0,1]
@@ -41,7 +41,7 @@ def assess_group(group: Group) -> list[LocalScore]:
 
 
 def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> LocalScore:
-    """对单张照片打 0–100 本地分 + 中文 reason。读图/推理失败抛异常。"""
+    """对单张照片打 0–100 本地分 + 中文 reason + 完整明细。读图/推理失败抛异常。"""
     img = imaging.load_for_analysis(path, companions)
     gray = imaging.to_gray_array(img, max_side=768)
 
@@ -50,29 +50,61 @@ def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> Loc
 
     exposure = signals.exposure_signals(gray)
     ent = signals.entropy(gray)
+
     # 技术质量：有脸用 TOPIQ-nr-face 评人脸裁剪（人像更贴合），无脸用通用 TOPIQ-nr 评整图。
     # topiq_nr-face 内部自带人脸检测，检不到会 AssertionError——此时回退通用 topiq_nr（不视为失败）。
     # 注意：只接 AssertionError；模型加载失败抛的 VisionUnavailable 仍照常上抛，不静默降级。
-    tech = None
+    tech, tech_source = None, "topiq_nr"
     if main is not None:
         try:
             tech = _clamp01(vision.topiq_face_score(_crop_face(img, main["bbox"])))
+            tech_source = "topiq_nr-face"
         except AssertionError:
             tech = None
     if tech is None:
         tech = _clamp01(vision.topiq_score(img))
+        tech_source = "topiq_nr"
     clipiqa = _clamp01(vision.clipiqa_plus_score(img))
 
     effective_sharp = main_sharp if main_sharp is not None else signals.region_sharpness(gray)
     sharp_norm = _clamp01(math.log1p(max(0.0, effective_sharp or 0.0)) / SHARP_LOG_REF)
-
     base = (0.45 * tech + 0.20 * clipiqa + 0.35 * sharp_norm) * 100.0
-    penalty, reason = _penalties(
-        faces=faces, main=main, main_sharp=main_sharp, effective_sharp=effective_sharp,
-        exposure=exposure, entropy=ent, tech=tech, clipiqa=clipiqa,
+
+    # 人脸眼睛信号（main 算一次；全员闭眼需逐张高置信脸的 EAR）
+    main_eye = vision.eye_open_score(main) if main is not None else None
+    main_big = main is not None and main.get("_area_ratio", 0) >= FACE_MIN_AREA
+    high_conf = [f for f in faces if f["det_score"] >= DET_MIN and f.get("_area_ratio", 0) >= FACE_MIN_AREA]
+    all_closed = len(high_conf) >= 2 and all(
+        (e := vision.eye_open_score(f)) is not None and e < EYES_CLOSED_EAR for f in high_conf
     )
-    score = float(max(0.0, min(100.0, base - penalty)))
-    return LocalScore(path=path, score=round(score, 2), reason=reason)
+
+    hits = _evaluate_penalties(
+        main_present=main is not None, main_big=main_big, main_eye=main_eye, all_closed=all_closed,
+        main_sharp=main_sharp, effective_sharp=effective_sharp, exposure=exposure,
+        entropy=ent, tech=tech, clipiqa=clipiqa,
+    )
+    reason = hits[0][0] if hits else ""
+    score = float(max(0.0, min(100.0, base - sum(p for _, p in hits))))
+
+    detail = ScoreDetail(
+        base=round(base, 2),
+        tech_quality=round(tech, 4), tech_source=tech_source, clipiqa=round(clipiqa, 4),
+        sharpness=round(effective_sharp, 2) if effective_sharp is not None else None,
+        sharpness_norm=round(sharp_norm, 4), entropy=round(ent, 3),
+        brightness_mean=round(exposure["brightness_mean"], 2),
+        contrast=round(exposure["contrast"], 2),
+        underexposed_ratio=round(exposure["underexposed_ratio"], 4),
+        overexposed_ratio=round(exposure["overexposed_ratio"], 4),
+        face=FaceDetail(
+            count=len(high_conf),
+            main_area_ratio=round(main["_area_ratio"], 4) if main is not None else None,
+            main_det_score=round(main["det_score"], 4) if main is not None else None,
+            main_sharpness=round(main_sharp, 2) if main_sharp is not None else None,
+            main_eye_ear=main_eye,
+        ),
+        penalties=[Penalty(reason=r, points=p) for r, p in hits],
+    )
+    return LocalScore(path=path, score=round(score, 2), primary_reason=reason, detail=detail)
 
 
 def _clamp01(v: float) -> float:
@@ -115,21 +147,16 @@ def _main_face_sharpness(faces, img, gray):
     return main, signals.region_sharpness(gray, bbox)
 
 
-def _penalties(*, faces, main, main_sharp, effective_sharp, exposure, entropy, tech, clipiqa):
-    """返回 (总扣分, 最高优先级问题的中文 reason)。reason 为空串表示无明显问题。"""
-    high_conf = [f for f in faces if f["det_score"] >= DET_MIN and f.get("_area_ratio", 0) >= FACE_MIN_AREA]
-    main_eye = vision.eye_open_score(main) if main is not None else None
-    main_big = main is not None and main.get("_area_ratio", 0) >= FACE_MIN_AREA
+def _evaluate_penalties(*, main_present, main_big, main_eye, all_closed, main_sharp,
+                        effective_sharp, exposure, entropy, tech, clipiqa):
+    """纯函数：按规则返回所有触发的扣分项 [(中文原因, 扣分)]，按优先级排序（首项即 reason）。
 
-    all_closed = len(high_conf) >= 2 and all(
-        (e := vision.eye_open_score(f)) is not None and e < EYES_CLOSED_EAR for f in high_conf
-    )
+    优先级思路：闭眼/人脸最敏感且最确信；曝光是确信信号，排在「无脸整图脱焦」这个较弱
+    启发式之前（纯黑/纯白图本就无细节，应报欠/过曝而非误判脱焦）。
+    """
     under = exposure["brightness_mean"] < DARK_MEAN or exposure["underexposed_ratio"] >= CLIP_DARK_RATIO
     over = exposure["brightness_mean"] > BRIGHT_MEAN or exposure["overexposed_ratio"] >= CLIP_BRIGHT_RATIO
 
-    # (是否触发, 扣分, reason)；按「可信度/特异性」优先级排列——reason 取第一个触发项。
-    # 闭眼/人脸最敏感且最确信；曝光是确信信号，排在「无脸整图脱焦」这个较弱启发式之前
-    # （纯黑/纯白图本就无细节，应报欠/过曝而非误判脱焦）。
     rules = [
         (all_closed, 35.0, "全员闭眼"),
         (main_big and main_eye is not None and main_eye < EYES_CLOSED_EAR, 28.0, "闭眼"),
@@ -137,10 +164,8 @@ def _penalties(*, faces, main, main_sharp, effective_sharp, exposure, entropy, t
         (main_sharp is not None and FACE_VERY_BLUR <= main_sharp < FACE_BLUR, 12.0, "人脸偏糊"),
         (under, 15.0, "欠曝"),
         (over, 15.0, "过曝"),
-        (main is None and (effective_sharp or 0.0) < IMG_VERY_BLUR, 18.0, "脱焦"),
+        (not main_present and (effective_sharp or 0.0) < IMG_VERY_BLUR, 18.0, "脱焦"),
         (entropy < LOW_ENTROPY, 8.0, "画面单调"),
         (tech < LOW_IQA and clipiqa < LOW_IQA, 8.0, "观感平庸"),
     ]
-    penalty = sum(p for hit, p, _ in rules if hit)
-    reason = next((r for hit, _, r in rules if hit), "")
-    return penalty, reason
+    return [(reason, points) for hit, points, reason in rules if hit]

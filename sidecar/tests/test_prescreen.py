@@ -36,14 +36,14 @@ def test_clean_image_high_score_no_reason(monkeypatch, noise_image):
     ls = prescreen.assess_photo(noise_image)
     assert ls.path == noise_image
     assert ls.score > 50.0
-    assert ls.reason == ""
+    assert ls.primary_reason == ""
 
 
 def test_dark_image_flagged_underexposed(monkeypatch, dark_image):
     monkeypatch.setattr(vision, "extract_faces", lambda img: [])
     _mock_iqa(monkeypatch)
     ls = prescreen.assess_photo(dark_image)
-    assert ls.reason == "欠曝"
+    assert ls.primary_reason == "欠曝"
     assert ls.score < 80.0
 
 
@@ -70,4 +70,4 @@ def test_closed_eyes_flagged(monkeypatch, noise_image):
     monkeypatch.setattr(vision, "eye_open_score", lambda f: 0.1)  # 闭眼
     _mock_iqa(monkeypatch)
     ls = prescreen.assess_photo(noise_image)
-    assert ls.reason == "闭眼"
+    assert ls.primary_reason == "闭眼"

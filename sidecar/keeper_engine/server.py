@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 
 from . import __version__, params, prescreen, vision
 from .funnel import apply_funnel
-from .models import AssessRequest, AssessResponse, PhotoError
+from .models import AssessRequest, AssessResponse, PhotoError, PkOrigin, SurvivorEntry
 from .vision import VisionUnavailable
 
 logger = logging.getLogger("keeper_engine.server")
@@ -90,7 +90,13 @@ def assess(req: AssessRequest) -> AssessResponse:
 
     n = params.compute_n(len(req.photos))
     m = params.compute_m(n)
-    survivors = [s.path for s, _ in apply_funnel(scores, m)]
+    survivors = [
+        SurvivorEntry(
+            path=s.path, score=s.score,
+            origin=PkOrigin.QUOTA_FILL if is_quota_fill else PkOrigin.PASSED,
+        )
+        for s, is_quota_fill in apply_funnel(scores, m)
+    ]
     return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors, n=n, m=m, errors=errors)
 
 
