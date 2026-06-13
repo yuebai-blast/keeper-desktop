@@ -41,3 +41,8 @@ run = "uv run pytest"
 description = "sidecar 代码风格检查"
 dir = "sidecar"
 run = "uv run ruff check ."
+
+[tasks.localscore]
+description = "对单张本地图片跑层①评分并打印明细（调试/标定用）：mise run localscore -- /path/to/img.jpg"
+dir = "sidecar"
+run = "uv run python devtools/localscore.py"
