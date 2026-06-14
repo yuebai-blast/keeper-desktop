@@ -3,7 +3,8 @@
 import pytest
 
 from keeper_engine import prescreen, server
-from keeper_engine.models import AssessRequest, LocalScore, PhotoRef
+from keeper_engine.models import AssessRequest, LocalScore, PhotoRef, Score, ScoreRequest
+from keeper_engine.scorer import ScorerError
 
 
 def _req(*paths):
@@ -66,3 +67,48 @@ def test_assess_model_unavailable_raises_503(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         server.assess(_req("p0"))
     assert ei.value.status_code == 503
+
+
+def _mock_preview(monkeypatch):
+    """把读图/生成预览换成桩，使 /score 测试不依赖真实文件。"""
+    monkeypatch.setattr(server.imaging, "load_for_analysis", lambda p, *a, **k: object())
+    monkeypatch.setattr(server.imaging, "make_preview", lambda img, **k: b"jpeg")
+
+
+def test_score_wires_funnel_and_assembles_pk(monkeypatch):
+    _mock_preview(monkeypatch)
+    smap = {"a": 90, "b": 50}
+
+    class FakeScorer:
+        def __init__(self, model=None):
+            pass
+
+        def score(self, previews):
+            return [Score(path=pv.path, score=smap[pv.path]) for pv in previews]
+
+    monkeypatch.setattr(server, "LocalDirectScorer", FakeScorer)
+    resp = server.score(ScoreRequest(group_id="g", photos=["a", "b"], group_total=5))
+    assert resp.n == 3  # compute_n(5) = max(ceil(1), 3)
+    assert {s.path: s.score for s in resp.scores} == {"a": 90.0, "b": 50.0}
+    # K=2 <= N=3 → 两张都进 PK；a 达标 passed、b<60 兜底
+    assert len(resp.pk) == 2
+    by = {e.path: e.origin for e in resp.pk}
+    assert by["a"] == "passed" and by["b"] == "quota_fill"
+
+
+def test_score_502_when_scorer_unavailable(monkeypatch):
+    from fastapi import HTTPException
+
+    _mock_preview(monkeypatch)
+
+    class Boom:
+        def __init__(self, model=None):
+            pass
+
+        def score(self, previews):
+            raise ScorerError("缺 key")
+
+    monkeypatch.setattr(server, "LocalDirectScorer", Boom)
+    with pytest.raises(HTTPException) as ei:
+        server.score(ScoreRequest(group_id="g", photos=["a"], group_total=3))
+    assert ei.value.status_code == 502
