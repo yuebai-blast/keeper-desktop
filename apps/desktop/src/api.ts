@@ -60,3 +60,56 @@ export function groupPhotos(photos: string[]): Promise<GroupResponse> {
 export function thumbnailUrl(path: string, size = 256): string {
   return `${BASE}/thumbnail?path=${encodeURIComponent(path)}&size=${size}`;
 }
+
+// ── 层① 本地评分 ──────────────────────────────────────────────────────────
+
+export interface Penalty {
+  reason: string;
+  points: number;
+}
+
+/** 层① 单张评分明细（与 sidecar ScoreDetail 对齐，字段供前端透明展示）。 */
+export interface ScoreDetail {
+  base: number;
+  tech_quality: number;
+  tech_source: string;
+  clipiqa: number;
+  sharpness: number | null;
+  sharpness_norm: number;
+  entropy: number;
+  brightness_mean: number;
+  contrast: number;
+  underexposed_ratio: number;
+  overexposed_ratio: number;
+  penalties: Penalty[];
+}
+
+export interface LocalScore {
+  path: string;
+  score: number;
+  primary_reason: string;
+  detail: ScoreDetail | null;
+}
+
+export interface SurvivorEntry {
+  path: string;
+  score: number;
+  origin: "passed" | "quota_fill" | string;
+}
+
+export interface AssessResponse {
+  group_id: string;
+  scores: LocalScore[];
+  survivors: SurvivorEntry[];
+  n: number;
+  m: number;
+  errors: PhotoError[];
+}
+
+/** 对一个组做层① 本地评分（每张 0–100 + 漏斗收口出 survivors）。 */
+export function assessGroup(groupId: string, photos: string[]): Promise<AssessResponse> {
+  return post<AssessResponse>("/assess", {
+    group_id: groupId,
+    photos: photos.map((path) => ({ path })),
+  });
+}

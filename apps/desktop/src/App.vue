@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from "vue";
-import { thumbnailUrl } from "./api";
+import { thumbnailUrl, type Group } from "./api";
 import { useEngineStore } from "./stores/engine";
 import { useLibraryStore } from "./stores/library";
 
@@ -44,6 +44,16 @@ const label = computed(() => {
 });
 
 const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+// 层①评分：取某组评分、按分排序、查单张分/是否幸存
+const assessmentOf = (id: string) => library.assessments[id];
+const scoreOf = (id: string, path: string) => library.assessments[id]?.scoresByPath[path];
+const isSurvivor = (id: string, path: string) => assessmentOf(id)?.survivorPaths.includes(path) ?? false;
+function orderedPhotos(g: Group): string[] {
+  const a = library.assessments[g.id];
+  if (!a) return g.photos;
+  return [...g.photos].sort((x, y) => (a.scoresByPath[y]?.score ?? -1) - (a.scoresByPath[x]?.score ?? -1));
+}
 
 onMounted(async () => {
   await engine.refresh();
@@ -98,16 +108,36 @@ onUnmounted(stopPoll);
         <p v-if="library.errors.length" class="hint err">{{ library.errors.length }} 张读取失败</p>
         <div class="groups">
           <article v-for="(g, i) in library.groups" :key="g.id" class="group">
-            <header>组 {{ i + 1 }} <small>· {{ g.photos.length }} 张</small></header>
+            <header>
+              <span>组 {{ i + 1 }} <small>· {{ g.photos.length }} 张</small></span>
+              <span class="grow" />
+              <small v-if="assessmentOf(g.id)?.busy" class="muted">评分中…</small>
+              <small v-else-if="assessmentOf(g.id)" class="muted">
+                保底 M={{ assessmentOf(g.id)?.m }} · 进层② {{ assessmentOf(g.id)?.survivorPaths.length }} 张
+              </small>
+              <button
+                v-else
+                class="btn ghost"
+                :disabled="!engine.ready"
+                @click="library.assessGroup(g)"
+              >
+                评分
+              </button>
+            </header>
+            <p v-if="assessmentOf(g.id)?.error" class="hint err">{{ assessmentOf(g.id)?.error }}</p>
             <div class="thumbs">
-              <img
-                v-for="p in g.photos"
+              <figure
+                v-for="p in orderedPhotos(g)"
                 :key="p"
-                :src="thumbnailUrl(p)"
-                :title="basename(p)"
-                loading="lazy"
-                alt=""
-              />
+                :class="{
+                  survivor: isSurvivor(g.id, p),
+                  out: !!assessmentOf(g.id) && !assessmentOf(g.id)?.busy && !isSurvivor(g.id, p),
+                }"
+                :title="scoreOf(g.id, p) ? scoreOf(g.id, p)!.score + ' · ' + (scoreOf(g.id, p)!.primary_reason || '无明显问题') : basename(p)"
+              >
+                <img :src="thumbnailUrl(p)" loading="lazy" alt="" />
+                <figcaption v-if="scoreOf(g.id, p)">{{ Math.round(scoreOf(g.id, p)!.score) }}</figcaption>
+              </figure>
             </div>
           </article>
         </div>
@@ -185,17 +215,47 @@ onUnmounted(stopPoll);
   border-radius: 10px;
   padding: 12px 14px;
 }
-.group > header { font-weight: 600; margin-bottom: 10px; }
+.group > header {
+  font-weight: 600;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .group > header small { color: var(--muted); font-weight: 400; }
+.group > header .grow { flex: 1; }
+.muted { color: var(--muted); }
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
-.thumbs img {
+.thumbs figure {
+  position: relative;
+  margin: 0;
   width: 96px;
   height: 96px;
-  object-fit: cover;
   border-radius: 6px;
-  background: #2a2d38;
-  border: 1px solid var(--border);
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: opacity 0.2s, border-color 0.2s;
 }
+.thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #2a2d38;
+}
+.thumbs figcaption {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+}
+.thumbs figure.survivor { border-color: #34d399; }
+.thumbs figure.out { opacity: 0.4; }
 </style>
 
 <style>
