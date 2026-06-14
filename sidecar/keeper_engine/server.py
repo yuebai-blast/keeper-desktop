@@ -151,20 +151,21 @@ def group(req: GroupRequest) -> GroupResponse:
             status_code=503,
             detail=f"模型未就绪（{_readiness.status}）：{_readiness.detail or '预热中，请稍后重试'}",
         )
-    paths, embeddings, times = [], [], []
+    paths, embeddings, face_embeddings, times = [], [], [], []
     errors: list[PhotoError] = []
     for p in req.photos:
         try:
-            emb, t = grouping.embed_photo(p)
+            emb, face_emb, t = grouping.embed_photo(p)
             paths.append(p)
             embeddings.append(emb)
+            face_embeddings.append(face_emb)
             times.append(t)
         except VisionUnavailable as e:
             raise HTTPException(status_code=503, detail=f"本地模型不可用：{e}") from e
         except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
             errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
 
-    groups = grouping.cluster(paths, embeddings, times)
+    groups = grouping.cluster(paths, embeddings, times, face_embeddings)
     return GroupResponse(groups=groups, errors=errors)
 
 

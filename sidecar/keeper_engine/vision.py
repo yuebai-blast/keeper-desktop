@@ -3,8 +3,9 @@
 含：
   - DINOv2（语义特征）：分组用，embed_image 出归一向量做视觉相似聚类。
     选 v2 不选 v3：v2 是 Apache-2.0、HF 免门禁、自动下载即用、商用干净；v3 是 gated + 自定义许可。
-  - InsightFace：层① 只加载「检测 + 68 关键点」（算锐度/闭眼），刻意不载识别模型
-    （用不到、加载更快、且避开非商用授权的 ArcFace；识别 embedding 等做人脸聚类时再说）。
+  - InsightFace：层① 加载「检测 + 68 关键点」（算锐度/闭眼），不载识别模型；
+    分组另用「检测 + 识别」实例取人脸身份 embedding，把「同场景不同人」拆成不同组。
+    ⚠️ 识别模型（ArcFace，buffalo_l）仅限非商用研究——付费产品商用前需替换或单独授权。
   - pyiqa：TOPIQ-nr-face（有脸时评人脸质量）/ TOPIQ-nr（无脸时评整图）+ CLIP-IQA+（美学）。
 
 设计：
@@ -205,11 +206,14 @@ def _onnx_providers() -> tuple[list[str], int]:
     return ["CPUExecutionProvider"], -1
 
 
-# 层① 只需检测 + 68 关键点（算锐度/闭眼）；识别 embedding 是「分组」轮才用的。
-# 刻意不加载识别模型：① 层①用不到，加载更快、内存更省；② InsightFace 的 ArcFace
-# 识别模型仅限非商用研究，付费产品商用前需单独处理——先把它挡在层①之外。
-# 分组轮需要 embedding 时，用含 "recognition" 的 modules 另起一个缓存实例即可。
+# 层① 只需检测 + 68 关键点（算锐度/闭眼），不加载识别模型：层①用不到，加载更快、内存更省。
 DETECT_MODULES = ("detection", "landmark_3d_68")
+
+# 分组用：检测 + 识别（ArcFace），取人脸身份 embedding 区分「同场景不同人」。
+# 与 DETECT_MODULES 是两个独立缓存实例（modules 不同）；识别需要 detection 输出的 5 点 kps 做对齐，
+# 不需要 68 关键点，故不含 landmark。⚠️ 识别模型仅限非商用研究，商用前需替换或授权（见模块 docstring）。
+GROUPING_FACE_MODULES = ("detection", "recognition")
+GROUPING_FACE_DET_MIN = 0.5  # 主脸最低检测置信度（低于此当背景误检，不取其身份）
 
 
 def _face_pack() -> str:
@@ -290,6 +294,26 @@ def extract_faces(
     return out
 
 
+def main_face_embedding(img: Image.Image) -> np.ndarray | None:
+    """取一张照片「主脸」（置信度够、面积最大）的身份 embedding（512d 已归一），供分组按人区分。
+
+    无脸 / 无合格主脸 / 该脸无识别向量时返回 None——分组遇 None 即不参与人脸约束，只靠语义+时间。
+    用含 "recognition" 的独立实例，依赖问题照常抛 VisionUnavailable（不静默降级）。
+    """
+    faces = extract_faces(img, modules=GROUPING_FACE_MODULES)
+    w, h = img.size
+    area = float(w * h) or 1.0
+    best, best_area = None, 0.0
+    for f in faces:
+        if f["det_score"] < GROUPING_FACE_DET_MIN or f.get("embedding") is None:
+            continue
+        x1, y1, x2, y2 = f["bbox"]
+        a = max(0.0, x2 - x1) * max(0.0, y2 - y1) / area
+        if a > best_area:
+            best, best_area = f, a
+    return best["embedding"] if best is not None else None
+
+
 def eye_open_score(face: dict) -> float | None:
     """68 关键点估算睁眼程度（EAR 均值）。睁眼 0.25+，闭眼 <0.2。
 
@@ -319,5 +343,6 @@ def require_layer1_capabilities() -> None:
 
 
 def require_grouping_capabilities() -> None:
-    """分组所需模型（DINOv2）能加载，否则抛异常。"""
+    """分组所需模型能加载，否则抛异常。DINOv2（语义）+ InsightFace 检测/识别（人脸身份）。"""
     _ensure_dinov2()
+    _ensure_insightface(GROUPING_FACE_MODULES)

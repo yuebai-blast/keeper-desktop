@@ -3,10 +3,11 @@
 信号（详见 docs/product-flow.md）：
   - 语义相似：DINOv2 特征余弦相似度（视觉上是不是同一画面）。
   - 时间邻近：EXIF 拍摄时间，越近越可能是同一串连拍（指数衰减）。
-  - 人脸聚类：本轮先不做——它需要 InsightFace 的 ArcFace 识别 embedding（非商用授权，
-    见 vision.py 注释）。聚类逻辑留了口子，日后把人脸 ID 相似度并进 combined 即可。
+  - 人脸身份：主脸 ArcFace embedding 余弦——把「同场景、同时间但不同人」拆成不同组。
+    两张都有合格主脸时才生效：同人 → 因子≈1（不干预）；不同人 → 因子压到 floor（强制拆开）；
+    任一无脸则因子=1（退回纯语义+时间，风景/空镜不受影响）。
 
-综合相似度 = 语义余弦 × 时间衰减；距离 = 1 − 综合相似度；complete-linkage 层次聚类按阈值切。
+综合相似度 = 语义余弦 × 时间衰减 × 人脸因子；距离 = 1 − 综合相似度；complete-linkage 层次聚类按阈值切。
 阈值都是可调旋钮，集中在下方常量。
 """
 
@@ -26,11 +27,20 @@ GROUP_DISTANCE_THRESHOLD = 0.4   # 1 − 综合相似度；越小分得越细（
 TIME_TAU_SECONDS = 120.0         # 时间衰减常数：Δt = TAU 时时间因子衰减到 e⁻¹≈0.37
 LINKAGE_METHOD = "complete"      # complete-linkage：组内任意两张都要够像，连拍组更紧
 
+# 人脸身份因子：把主脸 ArcFace 余弦线性映射到 [FACE_FACTOR_FLOOR, 1]。
+# 余弦 ≥ SAME 视为同人（因子=1，不干预）；≤ DIFF 视为不同人（因子=floor，强制拆开）。
+# floor 足够小，使「同场景不同人」综合相似度被压到 < (1−阈值) 而必被拆。阈值在真实人脸上标定。
+FACE_SAME_COS = 0.5              # 主脸余弦 ≥ 此值视为同一人
+FACE_DIFF_COS = 0.2              # 主脸余弦 ≤ 此值视为不同人
+FACE_FACTOR_FLOOR = 0.1          # 不同人时综合相似度的乘法下限（拉大距离、保证拆组）
 
-def embed_photo(path: str, companions: Sequence[str] = ()) -> tuple[np.ndarray, datetime | None]:
-    """加载一张图，返回 (DINOv2 归一特征, 拍摄时间)。读图/推理失败抛异常。"""
+
+def embed_photo(
+    path: str, companions: Sequence[str] = ()
+) -> tuple[np.ndarray, np.ndarray | None, datetime | None]:
+    """加载一张图，返回 (DINOv2 归一特征, 主脸身份 embedding 或 None, 拍摄时间)。读图/推理失败抛异常。"""
     img = imaging.load_for_analysis(path, tuple(companions))
-    return vision.embed_image(img), imaging.read_capture_time(img)
+    return vision.embed_image(img), vision.main_face_embedding(img), imaging.read_capture_time(img)
 
 
 def group_photos(photo_paths: Sequence[str]) -> list[Group]:
@@ -38,20 +48,46 @@ def group_photos(photo_paths: Sequence[str]) -> list[Group]:
 
     需要逐张容错的场景（如 /group 端点）改用 embed_photo + cluster 自行收集错误。
     """
-    embeddings, times = [], []
+    embeddings, face_embeddings, times = [], [], []
     for p in photo_paths:
-        emb, t = embed_photo(p)
+        emb, face_emb, t = embed_photo(p)
         embeddings.append(emb)
+        face_embeddings.append(face_emb)
         times.append(t)
-    return cluster(list(photo_paths), embeddings, times)
+    return cluster(list(photo_paths), embeddings, times, face_embeddings)
+
+
+def _face_factor_matrix(face_embeddings: Sequence[np.ndarray | None]) -> np.ndarray:
+    """主脸身份的成对乘法因子矩阵（n×n）：同人≈1、不同人→floor、任一无脸→1。
+
+    face_embeddings 须为 L2 归一化向量或 None。只有两张都有脸时才按余弦惩罚，其余处保持 1
+    （缺脸不应惩罚相似度，否则风景/空镜永远聚不到一起）。
+    """
+    n = len(face_embeddings)
+    has = np.array([f is not None for f in face_embeddings])
+    if has.sum() < 2:
+        return np.ones((n, n), dtype=np.float64)
+    dim = len(next(f for f in face_embeddings if f is not None))
+    mat = np.zeros((n, dim), dtype=np.float32)
+    for i, f in enumerate(face_embeddings):
+        if f is not None:
+            mat[i] = f
+    cos = np.clip(mat @ mat.T, -1.0, 1.0)  # 已归一，点积即余弦
+    factor = np.clip((cos - FACE_DIFF_COS) / (FACE_SAME_COS - FACE_DIFF_COS), FACE_FACTOR_FLOOR, 1.0)
+    both = has[:, None] & has[None, :]
+    return np.where(both, factor, 1.0)
 
 
 def cluster(
-    paths: list[str], embeddings: Sequence[np.ndarray], times: Sequence[datetime | None]
+    paths: list[str],
+    embeddings: Sequence[np.ndarray],
+    times: Sequence[datetime | None],
+    face_embeddings: Sequence[np.ndarray | None] | None = None,
 ) -> list[Group]:
-    """把已算好的特征+时间聚成瞬间组（纯函数，不碰 IO/模型，便于单测）。
+    """把已算好的特征+时间（+可选人脸身份）聚成瞬间组（纯函数，不碰 IO/模型，便于单测）。
 
-    embeddings 须为 L2 归一化向量（点积即余弦）。返回的 Group 按首次出现顺序编号 g1、g2…。
+    embeddings 须为 L2 归一化向量（点积即余弦）。face_embeddings 为各图主脸身份向量（无脸为 None）；
+    传 None 表示全部不参与人脸约束，退回纯「语义×时间」。返回的 Group 按首次出现顺序编号 g1、g2…。
     """
     n = len(paths)
     if n == 0:
@@ -67,7 +103,9 @@ def cluster(
     time_factor = np.exp(-dt / TIME_TAU_SECONDS)
     time_factor[np.isnan(time_factor)] = 1.0  # 任一方无时间 → 不衰减，只靠语义
 
-    dist = 1.0 - sem * time_factor
+    face_factor = _face_factor_matrix(face_embeddings if face_embeddings is not None else [None] * n)
+
+    dist = 1.0 - sem * time_factor * face_factor
     np.fill_diagonal(dist, 0.0)
     dist = np.clip((dist + dist.T) / 2.0, 0.0, None)  # 对称化、非负
 

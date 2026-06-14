@@ -46,3 +46,28 @@ def test_missing_time_falls_back_to_semantics():
     embs = [_unit(1, 0, 0), _unit(1, 0, 0)]
     groups = cluster(["a", "b"], embs, [None, None])
     assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
+
+
+def test_same_scene_different_people_split():
+    """画面相同、时间相同，但主脸身份不同 → 人脸因子把不同人拆成两组。"""
+    embs = [_unit(1, 0, 0)] * 4
+    faces = [_unit(1, 0, 0, 0), _unit(1, 0, 0, 0), _unit(0, 1, 0, 0), _unit(0, 1, 0, 0)]
+    groups = cluster(["a1", "a2", "b1", "b2"], embs, [T0] * 4, faces)
+    assert len(groups) == 2
+    photos = {frozenset(g.photos) for g in groups}
+    assert photos == {frozenset({"a1", "a2"}), frozenset({"b1", "b2"})}
+
+
+def test_same_scene_same_person_one_group():
+    """画面相同、时间相同、同一个人 → 人脸因子≈1，不干预，仍归一组。"""
+    embs = [_unit(1, 0, 0)] * 2
+    faces = [_unit(1, 0, 0, 0), _unit(1, 0, 0, 0)]
+    groups = cluster(["a", "b"], embs, [T0] * 2, faces)
+    assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
+
+
+def test_face_missing_does_not_penalize():
+    """任一张无主脸（None）→ 人脸因子=1，不惩罚相似度，退回纯语义+时间（同场景归一组）。"""
+    embs = [_unit(1, 0, 0)] * 2
+    groups = cluster(["a", "b"], embs, [T0] * 2, [None, _unit(0, 1, 0, 0)])
+    assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}

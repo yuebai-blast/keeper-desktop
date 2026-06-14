@@ -71,10 +71,12 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 数据流：`grouping`（第0步分组）→ `prescreen`（层①逐张打分）→ `scorer`+`ranking`（层②大模型打分+组PK）。两层共用同一筛选规则：
 
+- `grouping.py` — 把相似连拍聚成「瞬间组」。综合相似度 = 语义余弦(DINOv2) × 时间衰减(EXIF) × 人脸因子(主脸 ArcFace)。人脸因子专门把「同场景、同时间但不同人」拆成不同组；任一张无脸则因子=1，退回纯语义+时间。阈值在文件顶部，**在真实人脸上标定**。
+
 - `funnel.py` — **全系统最关键**。`apply_funnel(scored, n)` 是两层通用的筛选规则（≥60 全过、不足保底数按分补、输入不足全放行）。改它影响整个产品行为。
 - `params.py` — 保底数：`N = max(ceil(总数×20%), 3)`（层②），`M = ceil(1.5×N)`（层①）。
 - `prescreen.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值是集中在文件顶部的可调旋钮，**在真实照片上标定**。
-- `vision.py` — 本地模型懒加载单例（DINOv2 / InsightFace 检测+关键点 / pyiqa）。模型缓存固定到 `~/.cache/keeper/models`。刻意不载 InsightFace 的 ArcFace 识别模型（非商用授权 + 层①用不到）。
+- `vision.py` — 本地模型懒加载单例（DINOv2 / InsightFace / pyiqa）。模型缓存固定到 `~/.cache/keeper/models`。层①只用 InsightFace 检测+关键点（不载识别模型，层①用不到）；分组另起一个「检测+识别」实例取人脸身份 embedding。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**付费产品商用前需替换或单独授权**——这点对整个 `buffalo_l` 包（含层①在用的检测/关键点）都适用。
 - `scorer.py` — `Scorer` 协议（唯一会演化为云端中转的环节）；`LocalDirectScorer` 直连火山 Ark，提示词在 `prompts/layer2_score.md`（不改代码即可迭代）。
 
 桌面端：文件系统访问（导入扫图、归档写回）**只在 Rust 壳**（`src-tauri/src/lib.rs` 的 `import_photos` / `archive_decisions` 命令），前端碰不到 FS；前端状态在 Pinia stores（`engine` 连接态、`library` 库/分组/评分/裁决/归档）。
@@ -104,8 +106,11 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 已落地：分组、层①评分、层②大模型打分、PK 候选组装、缩略图缓存、桌面端 A/B 擂台终选（`src/components/Arena.vue`）与归档写回（复制/移动/仅清单）。
 
+分组已接入人脸身份（主脸 ArcFace）拆开「同场景不同人」。
+
 尚未落地：
+- 人脸**集合**相似度：当前只取「主脸」，多人合影（一张 A+B、另一张 A+C）区分不准，需升级为多脸集合匹配。
 - 服务端编排端点（如 `/assemble`，见 `server.py` 末尾 TODO；`assemble_pk_set` 已可复用）。
-- 人脸聚类进分组（需 ArcFace 识别 embedding，受非商用授权阻挡，`grouping.py`/`vision.py` 已留口子）。
 - `CloudRelayScorer`（商业版云端中转，按 `Scorer` 协议新增实现 + 切配置即可，业务流程不改）。
 - 各阈值/权重旋钮仍需在真实照片集上标定。
+- **商用授权**：`buffalo_l`（含分组用的 ArcFace 识别 + 层①的检测/关键点）仅限非商用研究，商用前必须替换或授权。
