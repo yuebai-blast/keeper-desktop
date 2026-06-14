@@ -16,6 +16,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
@@ -28,13 +29,14 @@ CONFIG_KEY_FILE = Path.home() / ".config" / "keeper" / "ark_key"
 # 模型 id 必须由调用方/环境提供（不同账号开通的模型不同），这里只是兜底占位
 DEFAULT_MODEL = os.environ.get("KEEPER_ARK_MODEL", "")
 
-# 层② 评的是审美 / 表情 / 构图 / 语义（与层① 的技术质量互补），输出 0–100。
-_PROMPT = (
-    "你是专业的摄影选片助手。请评估这张照片作为「值得保留的好片」的综合质量，重点看："
-    "审美、人物表情与神态、构图、抓拍到的瞬间/语义。给出 0–100 的整数分（越高越值得留），"
-    "并用不超过 15 字的中文点明主要理由。只输出 JSON、不要多余文字："
-    '{"score": <0-100 整数>, "reason": "<中文短理由>"}'
-)
+# prompt 抽到独立的 prompts/ 文件夹，便于不改代码地迭代提示词
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+@lru_cache(maxsize=None)
+def _layer2_prompt() -> str:
+    """层② 打分提示词（找缺陷 + 锚定分数区间，强制拉开差距）。"""
+    return (_PROMPTS_DIR / "layer2_score.md").read_text(encoding="utf-8")
 
 
 class ScorerError(RuntimeError):
@@ -67,15 +69,16 @@ def _load_api_key(explicit: str | None) -> str:
     raise ScorerError(f"未找到 Ark API key（设环境变量 ARK_API_KEY 或写入 {CONFIG_KEY_FILE}）")
 
 
-def parse_response(text: str) -> tuple[float, str]:
-    """从大模型回复里抽出 {"score","reason"}，clamp 到 0–100、理由截断。解析失败抛异常。"""
+def parse_response(text: str) -> tuple[float, str, str]:
+    """从大模型回复抽出 {"score","reason","flaws"}，clamp 0–100、截断。解析失败抛异常。"""
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         raise ValueError(f"无法从打分输出解析 JSON：{text!r}")
     data = json.loads(m.group(0))
     score = max(0.0, min(100.0, float(data["score"])))
     reason = str(data.get("reason", "")).strip()[:30]
-    return round(score, 2), reason
+    flaws = str(data.get("flaws", "")).strip()[:100]
+    return round(score, 2), reason, flaws
 
 
 class LocalDirectScorer:
@@ -115,15 +118,15 @@ class LocalDirectScorer:
                 resp = client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": [
-                        {"type": "text", "text": _PROMPT},
+                        {"type": "text", "text": _layer2_prompt()},
                         {"type": "image_url", "image_url": {"url": data_url}},
                     ]}],
                     temperature=0.0,
-                    max_tokens=200,
+                    max_tokens=400,
                 )
                 text = resp.choices[0].message.content or ""
-                score, reason = parse_response(text)
-                return Score(path=preview.path, score=score, reason=reason)
+                score, reason, flaws = parse_response(text)
+                return Score(path=preview.path, score=score, reason=reason, flaws=flaws)
             except Exception as e:  # noqa: BLE001 —— 重试后仍失败则包装上抛
                 last_err = e
         raise ScorerError(f"{Path(preview.path).name} 打分失败：{last_err}") from last_err
