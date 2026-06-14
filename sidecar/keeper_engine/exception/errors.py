@@ -8,7 +8,11 @@ from __future__ import annotations
 
 
 class VisionUnavailable(RuntimeError):
-    """本地模型不可用（依赖缺失 / 权重加载失败）。绝不静默降级，一律抛出。"""
+    """本地模型不可用（权重下载/加载失败）。通常可重试（网络等）。绝不静默降级，一律抛出。"""
+
+
+class DependencyMissing(VisionUnavailable):
+    """运行依赖缺失（Python 包未安装）——属于「不允许运行」，重试也无用，不可恢复。"""
 
 
 class ScorerError(RuntimeError):

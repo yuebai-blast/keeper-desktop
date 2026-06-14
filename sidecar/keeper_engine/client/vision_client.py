@@ -20,12 +20,13 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from PIL import Image
 
 from ..config.settings import Settings
-from ..exception.errors import VisionUnavailable
+from ..exception.errors import DependencyMissing, VisionUnavailable
 from ..util import signals
 
 logger = logging.getLogger("keeper_engine.client.vision")
@@ -114,7 +115,7 @@ class VisionClient:
                 import torch  # noqa: F401
                 from transformers import AutoImageProcessor, AutoModel
             except ImportError as e:
-                raise VisionUnavailable(f"DINOv2 依赖缺失：{e}（需 transformers + torch）") from e
+                raise DependencyMissing(f"DINOv2 依赖缺失：{e}（需 transformers + torch）") from e
             model_id = self._settings.dino_model
             dev = self._torch_device()
             logger.info("vision: 加载 DINOv2 %s（device=%s，首次需下载权重）…", model_id, dev.type)
@@ -166,7 +167,7 @@ class VisionClient:
                 import pyiqa  # noqa: F401
                 import torch  # noqa: F401
             except ImportError as e:
-                raise VisionUnavailable(f"{label} 依赖缺失：{e}（需 pyiqa + timm）") from e
+                raise DependencyMissing(f"{label} 依赖缺失：{e}（需 pyiqa + timm）") from e
             dev = self._torch_device()
             logger.info("vision: 加载 %s（%s, device=%s，首次需下载权重）…", label, metric_name, dev.type)
             try:
@@ -223,7 +224,7 @@ class VisionClient:
             try:
                 from insightface.app import FaceAnalysis
             except ImportError as e:
-                raise VisionUnavailable(f"InsightFace 依赖缺失：{e}（需 insightface + onnxruntime）") from e
+                raise DependencyMissing(f"InsightFace 依赖缺失：{e}（需 insightface + onnxruntime）") from e
             providers, ctx_id = self._onnx_providers()
             pack = self._settings.face_pack
             root = str(self._models_root() / "insightface")
@@ -319,16 +320,19 @@ class VisionClient:
             return None
         return round(val, 4)
 
-    # ── 能力校验 ──────────────────────────────────────────────────────────
+    # ── 启动期预热 ────────────────────────────────────────────────────────
 
-    def require_layer1_capabilities(self) -> None:
-        """层① 所需模型全部能加载，否则抛异常（启动期 / 首次调用前可主动校验）。"""
-        self._ensure_insightface()
-        self._ensure_pyiqa("topiq", "topiq_nr", "TOPIQ-nr")
-        self._ensure_pyiqa("topiq_face", "topiq_nr-face", "TOPIQ-nr-face")
-        self._ensure_pyiqa("clipiqa", "clipiqa+", "CLIP-IQA+")
+    def warmup_steps(self) -> list[tuple[str, Callable[[], None]]]:
+        """返回启动期需逐个加载的全部模型 [(中文步骤名, 加载函数)]，供就绪态报进度。
 
-    def require_grouping_capabilities(self) -> None:
-        """分组所需模型能加载，否则抛异常。DINOv2（语义）+ InsightFace 检测/识别（人脸身份）。"""
-        self._ensure_dinov2()
-        self._ensure_insightface(GROUPING_FACE_MODULES)
+        覆盖分组 + 层① 的所有模型。任一步加载失败即抛异常（依赖缺失抛 DependencyMissing，
+        权重下载/加载失败抛 VisionUnavailable）——绝不静默降级。
+        """
+        return [
+            ("语义特征模型 DINOv2", self._ensure_dinov2),
+            ("人脸检测 / 身份识别", lambda: self._ensure_insightface(GROUPING_FACE_MODULES)),
+            ("人脸检测 / 关键点", lambda: self._ensure_insightface(DETECT_MODULES)),
+            ("画质评分 TOPIQ-nr", lambda: self._ensure_pyiqa("topiq", "topiq_nr", "TOPIQ-nr")),
+            ("人脸画质 TOPIQ-nr-face", lambda: self._ensure_pyiqa("topiq_face", "topiq_nr-face", "TOPIQ-nr-face")),
+            ("美学评分 CLIP-IQA+", lambda: self._ensure_pyiqa("clipiqa", "clipiqa+", "CLIP-IQA+")),
+        ]

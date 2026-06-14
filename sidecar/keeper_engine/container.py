@@ -35,7 +35,7 @@ class Container(containers.DeclarativeContainer):
     scorer = providers.Singleton(LocalDirectScorer, settings=settings)  # ← 切 CloudRelayScorer 只改这行
 
     # ── 就绪态：全局共享，单例 ──
-    readiness_service = providers.Singleton(ReadinessService, vision=vision_client)
+    readiness_service = providers.Singleton(ReadinessService, vision=vision_client, settings=settings)
 
     # ── 无状态领域服务 ──
     funnel_service = providers.Factory(FunnelService)
