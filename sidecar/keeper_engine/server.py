@@ -11,6 +11,7 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__, grouping, imaging, params, prescreen, ranking, vision
 from .funnel import apply_funnel
@@ -70,6 +71,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Keeper Engine", version=__version__, lifespan=lifespan)
+
+# 桌面端 Tauri webview 经浏览器上下文跨源调用本服务，需放行本地来源。
+# 服务只绑 127.0.0.1（仅本机可达），故放行 localhost / tauri 来源是安全的。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
