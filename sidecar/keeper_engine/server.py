@@ -97,11 +97,10 @@ def thumbnail(
     """生成并返回一张照片的缩略图 JPEG（桌面端画廊用）。
 
     sidecar 能解 RAW/HEIC 并缩放（webview 做不到）；只走 localhost，照片不出本地。
-    读图失败 → 404。
+    带磁盘缓存（原图改动自动失效）。读图失败 → 404。
     """
     try:
-        img = imaging.load_for_analysis(path)
-        jpeg = imaging.make_thumbnail(img, max_side=size)
+        jpeg = imaging.cached_thumbnail(path, max_side=size)
     except Exception as e:  # noqa: BLE001 —— 路径无效/损坏当 404
         raise HTTPException(status_code=404, detail=f"{type(e).__name__}: {e}") from e
     return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})

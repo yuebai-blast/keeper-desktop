@@ -42,3 +42,23 @@ def test_make_preview_under_size_limit(tmp_path):
     data = imaging.make_preview(img, max_side=896, max_bytes=512 * 1024)
     assert data[:2] == b"\xff\xd8"            # JPEG 魔数
     assert len(data) <= 512 * 1024
+
+
+def test_cached_thumbnail_hits_cache(tmp_path, monkeypatch):
+    """二次调用命中磁盘缓存——不再走生成（把 make_thumbnail 改成抛错也照样返回）。"""
+    monkeypatch.setenv("KEEPER_THUMBS_DIR", str(tmp_path / "thumbs"))
+    arr = np.random.default_rng(3).integers(0, 255, (300, 400, 3), dtype=np.uint8)
+    p = _save(tmp_path, "x.png", arr)
+
+    first = imaging.cached_thumbnail(p, max_side=128)
+    assert first[:2] == b"\xff\xd8"
+
+    monkeypatch.setattr(imaging, "make_thumbnail", lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该再生成")))
+    second = imaging.cached_thumbnail(p, max_side=128)
+    assert second == first  # 命中缓存
+
+
+def test_cached_thumbnail_missing_file_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("KEEPER_THUMBS_DIR", str(tmp_path / "thumbs"))
+    with pytest.raises(FileNotFoundError):
+        imaging.cached_thumbnail(str(tmp_path / "nope.jpg"))
