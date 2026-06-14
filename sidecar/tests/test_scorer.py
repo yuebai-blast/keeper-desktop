@@ -2,7 +2,7 @@
 
 import pytest
 
-from keeper_engine.scorer import _layer2_prompt, parse_response
+from keeper_engine.client.scorer import _layer2_prompt, parse_response
 
 
 def test_parse_plain_json():

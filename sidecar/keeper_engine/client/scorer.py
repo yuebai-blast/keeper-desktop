@@ -3,7 +3,7 @@
 Scorer 抽象是全系统唯一会演化（本地直调 → 云端中转）的环节：
   - LocalDirectScorer（本版）：sidecar 直连大模型 API（火山 Ark，OpenAI 兼容协议）。
   - CloudRelayScorer（未来商业版）：改调自建云端中转层（鉴权 + 计量计费 + 加价）。
-业务流程只依赖 Scorer 协议，商业化时新增实现 + 切配置即可，编排逻辑零改动。
+业务流程只依赖 Scorer 协议；商业化时新增实现 + 在 DI 容器里换一行绑定即可，编排逻辑零改动。
 
 照片不出本地：只上传低清预览（Preview.jpeg 字节），绝不传原图；推理完即焚。
 """
@@ -20,14 +20,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
-from .models import Score
-
-# 火山 Ark，OpenAI 兼容协议
-ARK_BASE_URL = os.environ.get("KEEPER_ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-# API key 本地管理：env 或 ~/.config/keeper/ark_key（0600），绝不入库（CLAUDE.md）
-CONFIG_KEY_FILE = Path.home() / ".config" / "keeper" / "ark_key"
-# 模型 id 必须由调用方/环境提供（不同账号开通的模型不同），这里只是兜底占位
-DEFAULT_MODEL = os.environ.get("KEEPER_ARK_MODEL", "")
+from ..config.settings import Settings
+from ..exception.errors import ScorerError
+from ..vo.score import Score
 
 # prompt 抽到独立的 prompts/ 文件夹，便于不改代码地迭代提示词
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -39,10 +34,6 @@ def _layer2_prompt() -> str:
     return (_PROMPTS_DIR / "layer2_score.md").read_text(encoding="utf-8")
 
 
-class ScorerError(RuntimeError):
-    """层② 打分不可用（缺 key / 网络 / 接口或解析错误）。不静默降级，一律抛出。"""
-
-
 @dataclass
 class Preview:
     """送去打分的低清预览：path 仅作身份标识，jpeg 是唯一上传的字节（用完即焚）。"""
@@ -52,21 +43,10 @@ class Preview:
 
 
 class Scorer(Protocol):
-    """给一组候选预览打 0–100 分，返回与输入同序的 Score。"""
+    """给一组候选预览打 0–100 分，返回与输入同序的 Score。model 为本次使用的大模型 id。"""
 
-    def score(self, previews: list[Preview]) -> list[Score]:
+    def score(self, previews: list[Preview], model: str) -> list[Score]:
         ...
-
-
-def _load_api_key(explicit: str | None) -> str:
-    if explicit:
-        return explicit
-    env = os.environ.get("ARK_API_KEY")
-    if env:
-        return env.strip()
-    if CONFIG_KEY_FILE.exists():
-        return CONFIG_KEY_FILE.read_text(encoding="utf-8").strip()
-    raise ScorerError(f"未找到 Ark API key（设环境变量 ARK_API_KEY 或写入 {CONFIG_KEY_FILE}）")
 
 
 def parse_response(text: str) -> tuple[float, str, str]:
@@ -82,41 +62,50 @@ def parse_response(text: str) -> tuple[float, str, str]:
 
 
 class LocalDirectScorer:
-    """本版实现：sidecar 直连火山 Ark（OpenAI 兼容）。
+    """本版实现：sidecar 直连火山 Ark（OpenAI 兼容）。构造注入 Settings；model 在调用时传。
 
-    商业版换 CloudRelayScorer 指向自建中转，业务流程不变。
+    商业版换 CloudRelayScorer 指向自建中转，业务流程不变（只改 DI 容器绑定）。
     """
 
-    def __init__(self, model: str | None = None, api_key: str | None = None,
-                 concurrency: int | None = None) -> None:
-        self.model = model or DEFAULT_MODEL
-        self._api_key = api_key  # None 时从 env / CONFIG_KEY_FILE 解析
-        self.concurrency = concurrency or int(os.environ.get("KEEPER_ARK_CONCURRENCY", "4"))
+    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
+        self._settings = settings
+        self._api_key = api_key  # None 时从 env / settings.ark_key_file 解析
 
-    def _client(self):
-        if not self.model:
-            raise ScorerError("未指定 Ark 模型 id（构造参数 model 或环境变量 KEEPER_ARK_MODEL）")
+    def _load_api_key(self) -> str:
+        if self._api_key:
+            return self._api_key
+        env = os.environ.get("ARK_API_KEY")
+        if env:
+            return env.strip()
+        key_file = self._settings.ark_key_file
+        if key_file.exists():
+            return key_file.read_text(encoding="utf-8").strip()
+        raise ScorerError(f"未找到 Ark API key（设环境变量 ARK_API_KEY 或写入 {key_file}）")
+
+    def _client(self, model: str):
+        if not model:
+            raise ScorerError("未指定 Ark 模型 id（请求字段 model 或环境变量 KEEPER_ARK_MODEL）")
         try:
             from openai import OpenAI
         except ImportError as e:
             raise ScorerError(f"缺少 openai 依赖：{e}") from e
-        return OpenAI(api_key=_load_api_key(self._api_key), base_url=ARK_BASE_URL)
+        return OpenAI(api_key=self._load_api_key(), base_url=self._settings.ark_base_url)
 
-    def score(self, previews: list[Preview]) -> list[Score]:
+    def score(self, previews: list[Preview], model: str) -> list[Score]:
         if not previews:
             return []
-        client = self._client()
-        workers = max(1, min(self.concurrency, len(previews)))
+        client = self._client(model)
+        workers = max(1, min(self._settings.ark_concurrency, len(previews)))
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            return list(ex.map(lambda p: self._score_one(client, p), previews))
+            return list(ex.map(lambda p: self._score_one(client, model, p), previews))
 
-    def _score_one(self, client, preview: Preview) -> Score:
+    def _score_one(self, client, model: str, preview: Preview) -> Score:
         data_url = "data:image/jpeg;base64," + base64.b64encode(preview.jpeg).decode("ascii")
         last_err: Exception | None = None
         for _ in range(2):  # 失败重试一次
             try:
                 resp = client.chat.completions.create(
-                    model=self.model,
+                    model=model,
                     messages=[{"role": "user", "content": [
                         {"type": "text", "text": _layer2_prompt()},
                         {"type": "image_url", "image_url": {"url": data_url}},

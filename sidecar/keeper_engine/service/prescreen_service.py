@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import math
 
-from . import imaging, signals, vision
-from .models import FaceDetail, Group, LocalScore, Penalty, ScoreComponent, ScoreDetail
+from ..client.vision_client import VisionClient
+from ..util import imaging, signals
+from ..vo.local_score import FaceDetail, LocalScore, Penalty, ScoreComponent, ScoreDetail
 
 # ── 基础分权重（三项加权和 ×100；可调旋钮）────────────────────────────────
 W_TECH = 0.45       # 技术质量（有脸 topiq_nr-face / 无脸 topiq_nr）
@@ -39,90 +40,88 @@ LOW_ENTROPY = 3.0                  # 信息熵低于此 → 画面单调
 LOW_IQA = 0.40                     # TOPIQ 与 CLIP-IQA 同时低于此 → 观感平庸
 
 
-def assess_group(group: Group) -> list[LocalScore]:
-    """对一个组内每张图打 0–100 本地技术质量分（无 companion 信息）。
+class PrescreenService:
+    """层① 单张本地评分；用注入的 VisionClient 取 IQA/人脸信号。"""
 
-    任一张失败即抛出——供测试与「干净输入」的内部调用；/assess 端点逐张容错另算。
-    """
-    return [assess_photo(p) for p in group.photos]
+    def __init__(self, vision: VisionClient) -> None:
+        self._vision = vision
 
+    def assess_photo(self, path: str, companions: tuple[str, ...] | list[str] = ()) -> LocalScore:
+        """对单张照片打 0–100 本地分 + 中文 reason + 完整明细。读图/推理失败抛异常。"""
+        img = imaging.load_for_analysis(path, companions)
+        gray = imaging.to_gray_array(img, max_side=768)
 
-def assess_photo(path: str, companions: tuple[str, ...] | list[str] = ()) -> LocalScore:
-    """对单张照片打 0–100 本地分 + 中文 reason + 完整明细。读图/推理失败抛异常。"""
-    img = imaging.load_for_analysis(path, companions)
-    gray = imaging.to_gray_array(img, max_side=768)
+        faces = self._vision.extract_faces(img)
+        main, main_sharp = _main_face_sharpness(faces, img, gray)
 
-    faces = vision.extract_faces(img)
-    main, main_sharp = _main_face_sharpness(faces, img, gray)
+        exposure = signals.exposure_signals(gray)
+        ent = signals.entropy(gray)
 
-    exposure = signals.exposure_signals(gray)
-    ent = signals.entropy(gray)
+        # 技术质量：主脸够大用 TOPIQ-nr-face 评人脸裁剪（人像更贴合），否则用通用 TOPIQ-nr 评整图。
+        #  - 小脸（占比 < FACE_IQA_MIN_AREA）回退：放大到 512² 细节少，人脸IQA 易误判低分。
+        #  - topiq_nr-face 内部自带人脸检测，检不到会 AssertionError——也回退（不视为失败）。
+        # 注意：只接 AssertionError；模型加载失败抛的 VisionUnavailable 仍照常上抛，不静默降级。
+        tech, tech_source = None, "topiq_nr"
+        use_face_iqa = main is not None and main.get("_area_ratio", 0) >= FACE_IQA_MIN_AREA
+        if use_face_iqa:
+            try:
+                tech = _clamp01(self._vision.topiq_face_score(_crop_face(img, main["bbox"])))
+                tech_source = "topiq_nr-face"
+            except AssertionError:
+                tech = None
+        if tech is None:
+            tech = _clamp01(self._vision.topiq_score(img))
+            tech_source = "topiq_nr"
+        clipiqa = _clamp01(self._vision.clipiqa_plus_score(img))
 
-    # 技术质量：主脸够大用 TOPIQ-nr-face 评人脸裁剪（人像更贴合），否则用通用 TOPIQ-nr 评整图。
-    #  - 小脸（占比 < FACE_IQA_MIN_AREA）回退：放大到 512² 细节少，人脸IQA 易误判低分。
-    #  - topiq_nr-face 内部自带人脸检测，检不到会 AssertionError——也回退（不视为失败）。
-    # 注意：只接 AssertionError；模型加载失败抛的 VisionUnavailable 仍照常上抛，不静默降级。
-    tech, tech_source = None, "topiq_nr"
-    use_face_iqa = main is not None and main.get("_area_ratio", 0) >= FACE_IQA_MIN_AREA
-    if use_face_iqa:
-        try:
-            tech = _clamp01(vision.topiq_face_score(_crop_face(img, main["bbox"])))
-            tech_source = "topiq_nr-face"
-        except AssertionError:
-            tech = None
-    if tech is None:
-        tech = _clamp01(vision.topiq_score(img))
-        tech_source = "topiq_nr"
-    clipiqa = _clamp01(vision.clipiqa_plus_score(img))
+        effective_sharp = main_sharp if main_sharp is not None else signals.region_sharpness(gray)
+        sharp_norm = _clamp01(math.log1p(max(0.0, effective_sharp or 0.0)) / SHARP_LOG_REF)
+        # value 化为 0–100 制，使「value × weight = points」自洽（权重和为 1，满分 100）
+        components = [
+            ScoreComponent(name=f"技术质量({tech_source})", value=round(tech * 100, 2),
+                           weight=W_TECH, points=round(W_TECH * tech * 100, 2)),
+            ScoreComponent(name="美学(CLIP-IQA+)", value=round(clipiqa * 100, 2),
+                           weight=W_AESTHETIC, points=round(W_AESTHETIC * clipiqa * 100, 2)),
+            ScoreComponent(name="主体锐度", value=round(sharp_norm * 100, 2),
+                           weight=W_SHARP, points=round(W_SHARP * sharp_norm * 100, 2)),
+        ]
+        base = (W_TECH * tech + W_AESTHETIC * clipiqa + W_SHARP * sharp_norm) * 100.0
 
-    effective_sharp = main_sharp if main_sharp is not None else signals.region_sharpness(gray)
-    sharp_norm = _clamp01(math.log1p(max(0.0, effective_sharp or 0.0)) / SHARP_LOG_REF)
-    # value 化为 0–100 制，使「value × weight = points」自洽（权重和为 1，满分 100）
-    components = [
-        ScoreComponent(name=f"技术质量({tech_source})", value=round(tech * 100, 2),
-                       weight=W_TECH, points=round(W_TECH * tech * 100, 2)),
-        ScoreComponent(name="美学(CLIP-IQA+)", value=round(clipiqa * 100, 2),
-                       weight=W_AESTHETIC, points=round(W_AESTHETIC * clipiqa * 100, 2)),
-        ScoreComponent(name="主体锐度", value=round(sharp_norm * 100, 2),
-                       weight=W_SHARP, points=round(W_SHARP * sharp_norm * 100, 2)),
-    ]
-    base = (W_TECH * tech + W_AESTHETIC * clipiqa + W_SHARP * sharp_norm) * 100.0
+        # 人脸眼睛信号（main 算一次；全员闭眼需逐张高置信脸的 EAR）
+        main_eye = self._vision.eye_open_score(main) if main is not None else None
+        main_big = main is not None and main.get("_area_ratio", 0) >= FACE_MIN_AREA
+        high_conf = [f for f in faces if f["det_score"] >= DET_MIN and f.get("_area_ratio", 0) >= FACE_MIN_AREA]
+        all_closed = len(high_conf) >= 2 and all(
+            (e := self._vision.eye_open_score(f)) is not None and e < EYES_CLOSED_EAR for f in high_conf
+        )
 
-    # 人脸眼睛信号（main 算一次；全员闭眼需逐张高置信脸的 EAR）
-    main_eye = vision.eye_open_score(main) if main is not None else None
-    main_big = main is not None and main.get("_area_ratio", 0) >= FACE_MIN_AREA
-    high_conf = [f for f in faces if f["det_score"] >= DET_MIN and f.get("_area_ratio", 0) >= FACE_MIN_AREA]
-    all_closed = len(high_conf) >= 2 and all(
-        (e := vision.eye_open_score(f)) is not None and e < EYES_CLOSED_EAR for f in high_conf
-    )
+        hits = _evaluate_penalties(
+            main_present=main is not None, main_big=main_big, main_eye=main_eye, all_closed=all_closed,
+            main_sharp=main_sharp, effective_sharp=effective_sharp, exposure=exposure,
+            entropy=ent, tech=tech, clipiqa=clipiqa,
+        )
+        reason = hits[0][0] if hits else ""
+        score = float(max(0.0, min(100.0, base - sum(p for _, p in hits))))
 
-    hits = _evaluate_penalties(
-        main_present=main is not None, main_big=main_big, main_eye=main_eye, all_closed=all_closed,
-        main_sharp=main_sharp, effective_sharp=effective_sharp, exposure=exposure,
-        entropy=ent, tech=tech, clipiqa=clipiqa,
-    )
-    reason = hits[0][0] if hits else ""
-    score = float(max(0.0, min(100.0, base - sum(p for _, p in hits))))
-
-    detail = ScoreDetail(
-        base=round(base, 2), base_components=components,
-        tech_quality=round(tech, 4), tech_source=tech_source, clipiqa=round(clipiqa, 4),
-        sharpness=round(effective_sharp, 2) if effective_sharp is not None else None,
-        sharpness_norm=round(sharp_norm, 4), entropy=round(ent, 3),
-        brightness_mean=round(exposure["brightness_mean"], 2),
-        contrast=round(exposure["contrast"], 2),
-        underexposed_ratio=round(exposure["underexposed_ratio"], 4),
-        overexposed_ratio=round(exposure["overexposed_ratio"], 4),
-        face=FaceDetail(
-            count=len(high_conf),
-            main_area_ratio=round(main["_area_ratio"], 4) if main is not None else None,
-            main_det_score=round(main["det_score"], 4) if main is not None else None,
-            main_sharpness=round(main_sharp, 2) if main_sharp is not None else None,
-            main_eye_ear=main_eye,
-        ),
-        penalties=[Penalty(reason=r, points=p) for r, p in hits],
-    )
-    return LocalScore(path=path, score=round(score, 2), primary_reason=reason, detail=detail)
+        detail = ScoreDetail(
+            base=round(base, 2), base_components=components,
+            tech_quality=round(tech, 4), tech_source=tech_source, clipiqa=round(clipiqa, 4),
+            sharpness=round(effective_sharp, 2) if effective_sharp is not None else None,
+            sharpness_norm=round(sharp_norm, 4), entropy=round(ent, 3),
+            brightness_mean=round(exposure["brightness_mean"], 2),
+            contrast=round(exposure["contrast"], 2),
+            underexposed_ratio=round(exposure["underexposed_ratio"], 4),
+            overexposed_ratio=round(exposure["overexposed_ratio"], 4),
+            face=FaceDetail(
+                count=len(high_conf),
+                main_area_ratio=round(main["_area_ratio"], 4) if main is not None else None,
+                main_det_score=round(main["det_score"], 4) if main is not None else None,
+                main_sharpness=round(main_sharp, 2) if main_sharp is not None else None,
+                main_eye_ear=main_eye,
+            ),
+            penalties=[Penalty(reason=r, points=p) for r, p in hits],
+        )
+        return LocalScore(path=path, score=round(score, 2), primary_reason=reason, detail=detail)
 
 
 def _clamp01(v: float) -> float:

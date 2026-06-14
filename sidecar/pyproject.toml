@@ -34,6 +34,8 @@ dependencies = [
     "timm>=0.9",
     # ── 大模型打分（火山 Ark，OpenAI 兼容协议）；经 Scorer 接口封装 ──
     "openai>=1.40",
+    # ── 依赖注入容器（分层架构：controller/service/client 经 DI 装配）──
+    "dependency-injector>=4.41",
 ]
 
 [dependency-groups]

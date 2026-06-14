@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from keeper_engine import signals
+from keeper_engine.util import signals
 
 
 def _checkerboard(n=64, cell=4) -> np.ndarray:

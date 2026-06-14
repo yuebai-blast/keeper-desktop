@@ -35,7 +35,7 @@ monorepo，两个组件各自启动：
 - `LocalDirectScorer`（本版）：sidecar 直连大模型 API（火山 Ark，OpenAI 兼容协议）。
 - `CloudRelayScorer`（未来商业版）：改调自建云端中转层（鉴权 + 计量计费 + 加价）。
 
-商业化时只需新增实现 + 切配置，**业务流程一行不改**。
+商业化时只需新增实现，并在 DI 容器（`keeper_engine/container.py`）里改 `scorer` 这一行绑定，**业务流程（controller/service）一行不改**。
 
 ## 常用命令
 
@@ -55,7 +55,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 ## sidecar HTTP 契约（desktop ↔ sidecar 唯一接口）
 
-服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/server.py`，前端客户端镜像在 `apps/desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
+服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/controller/*`（经 DI 注入 service），前端客户端镜像在 `apps/desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
 
 | 端点 | 作用 | 就绪门禁 |
 | :-- | :-- | :-- |
@@ -67,17 +67,24 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 容错约定：批量端点对**单张读图失败记入 `errors` 不中断**；本地模型整体不可用（预热失败/缺依赖）才 503，大模型不可用才 502——一律显式报错，不静默降级。
 
-## 漏斗管线模块地图（最关键逻辑）
+## 分层与漏斗管线模块地图（最关键逻辑）
 
-数据流：`grouping`（第0步分组）→ `prescreen`（层①逐张打分）→ `scorer`+`ranking`（层②大模型打分+组PK）。两层共用同一筛选规则：
+sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/container.py`）：
+`controller`（路由，只接线）→ `service`（业务/编排）→ `client`（外部依赖：本地模型 / 大模型）。
+配置在 `config/settings.py`（收口所有环境变量），出入参在 `request`/`response`，值对象在 `vo`，
+枚举/异常/转换在 `enumeration`/`exception`/`converter`，纯函数工具在 `util`（影像 IO、CV 信号）。
+入口 `main.py`（uvicorn）→ `app.py`（建容器、CORS、lifespan 启动预热、注册各 controller）。
 
-- `grouping.py` — 把相似连拍聚成「瞬间组」。综合相似度 = 语义余弦(DINOv2) × 时间衰减(EXIF) × 人脸因子(ArcFace)。人脸因子取两张照片**全部主要人脸**的集合，按双向最近邻平均余弦衡量「是不是同一拨人」（多人合影也适用），专门把「同场景、同时间但不同人」拆成不同组；任一张无脸则因子=1，退回纯语义+时间。阈值在文件顶部，**在真实人脸上标定**。
+数据流：分组 → 层①逐张打分 → 层②大模型打分 + 组 PK。关键模块：
 
-- `funnel.py` — **全系统最关键**。`apply_funnel(scored, n)` 是两层通用的筛选规则（≥60 全过、不足保底数按分补、输入不足全放行）。改它影响整个产品行为。
-- `params.py` — 保底数：`N = max(ceil(总数×20%), 3)`（层②），`M = ceil(1.5×N)`（层①）。
-- `prescreen.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值是集中在文件顶部的可调旋钮，**在真实照片上标定**。
-- `vision.py` — 本地模型懒加载单例（DINOv2 / InsightFace / pyiqa）。模型缓存固定到 `~/.cache/keeper/models`。层①只用 InsightFace 检测+关键点（不载识别模型，层①用不到）；分组另起一个「检测+识别」实例取人脸身份 embedding。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**付费产品商用前需替换或单独授权**——这点对整个 `buffalo_l` 包（含层①在用的检测/关键点）都适用。
-- `scorer.py` — `Scorer` 协议（唯一会演化为云端中转的环节）；`LocalDirectScorer` 直连火山 Ark，提示词在 `prompts/layer2_score.md`（不改代码即可迭代）。
+- `service/grouping_service.py` — 把相似连拍聚成「瞬间组」。综合相似度 = 语义余弦(DINOv2) × 时间衰减(EXIF) × 人脸因子(ArcFace 人脸集合，双向最近邻平均余弦，多人合影也适用），专门把「同场景、同时间但不同人」拆成不同组；任一张无脸则因子=1。`cluster` 为静态纯算法便于单测；阈值在文件顶部，**在真实人脸上标定**。
+- `service/funnel_service.py` — **全系统最关键**。`FunnelService.apply_funnel(scored, n)` 是两层通用筛选规则（≥60 全过、不足保底数按分补、输入不足全放行）。改它影响整个产品行为。
+- `service/params_service.py` — 保底数：`N = max(ceil(总数×20%), 3)`（层②），`M = ceil(1.5×N)`（层①）。
+- `service/prescreen_service.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值集中在文件顶部，**在真实照片上标定**。
+- `service/ranking_service.py` + `converter/score_converter.py` — 层②出口：套漏斗 + 给候选标注 passed/quota_fill 来源，组装 PK。
+- `service/{assess,scoring,readiness}_service.py` — 三个端点编排：层①评分收口 / 层②打分组装 / 模型预热与就绪态。
+- `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.cache/keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
+- `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
 桌面端：文件系统访问（导入扫图、归档写回）**只在 Rust 壳**（`src-tauri/src/lib.rs` 的 `import_photos` / `archive_decisions` 命令），前端碰不到 FS；前端状态在 Pinia stores（`engine` 连接态、`library` 库/分组/评分/裁决/归档）。
 
@@ -109,7 +116,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 分组已接入人脸身份（ArcFace 人脸集合相似度）拆开「同场景不同人」，多人合影按「是不是同一拨人」区分。
 
 尚未落地：
-- 服务端编排端点（如 `/assemble`，见 `server.py` 末尾 TODO；`assemble_pk_set` 已可复用）。
+- 服务端编排端点（如 `/assemble`；`RankingService.assemble_pk_set` 已可复用）。
 - `CloudRelayScorer`（商业版云端中转，按 `Scorer` 协议新增实现 + 切配置即可，业务流程不改）。
 - 各阈值/权重旋钮仍需在真实照片集上标定。
 - **商用授权**：`buffalo_l`（含分组用的 ArcFace 识别 + 层①的检测/关键点）仅限非商用研究，商用前必须替换或授权。

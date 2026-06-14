@@ -25,7 +25,7 @@ run = [
 [tasks.sidecar]
 description = "启动本地推理服务（FastAPI，默认 127.0.0.1）；透传参数：mise run sidecar -- --port 8761"
 dir = "sidecar"
-run = "uv run python -m keeper_engine.server"
+run = "uv run python -m keeper_engine.main"
 
 [tasks.app]
 description = "启动 Tauri 桌面应用（开发模式，自动起前端 + 壳）"

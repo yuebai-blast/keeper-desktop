@@ -4,7 +4,7 @@
   mise run localscore -- /path/to/img.jpg
   mise run localscore -- /path/to/raw.cr2 --companion /path/to/raw.jpg
 
-用于在真实照片上标定 keeper_engine/prescreen.py 顶部的阈值——光看总分不够，
+用于在真实照片上标定 keeper_engine/service/prescreen_service.py 顶部的阈值——光看总分不够，
 要看分项怎么来的。首次会触发模型加载（之后同进程内很快）。
 
 这是开发/标定脚本，不属于生产引擎包 keeper_engine，故放在 devtools/ 下。
@@ -19,7 +19,10 @@ from pathlib import Path
 # 让脚本无论从哪运行都能 import keeper_engine（sidecar 根目录在 devtools/ 的上一级）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from keeper_engine import prescreen  # noqa: E402 —— 须在 sys.path 注入之后才能导入
+# 须在 sys.path 注入之后才能导入
+from keeper_engine.client.vision_client import VisionClient  # noqa: E402
+from keeper_engine.config.settings import Settings  # noqa: E402
+from keeper_engine.service.prescreen_service import PrescreenService  # noqa: E402
 
 
 def main() -> None:
@@ -28,6 +31,8 @@ def main() -> None:
     ap.add_argument("--companion", action="append", default=[], help="RAW 的同名伴随图，可多次")
     args = ap.parse_args()
 
+    # 手动装配 DI 链路（脚本不起服务，直接构造 service + 注入 client）
+    prescreen = PrescreenService(VisionClient(Settings()))
     ls = prescreen.assess_photo(args.path, tuple(args.companion))
     d = ls.detail
 

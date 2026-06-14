@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from keeper_engine import imaging
+from keeper_engine.util import imaging
 
 
 def _save(tmp_path, name, arr):
