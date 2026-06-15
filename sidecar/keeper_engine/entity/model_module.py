@@ -14,6 +14,8 @@ class ModelModule(SQLModel, table=True):
     pending（待加载）/ downloading（下载中）/ ready（就绪）/ error（失败）。
     """
 
+    __tablename__ = "model_module"
+
     name: str = Field(primary_key=True)
     status: str = Field(default="pending")
     detail: str = Field(default="")

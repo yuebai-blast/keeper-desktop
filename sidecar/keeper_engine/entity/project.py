@@ -17,6 +17,8 @@ class Project(SQLModel, table=True):
     time_start/time_end/location 是导入时聚合的拍摄时间范围与拍摄地（尽力而为，可空）。
     """
 
+    __tablename__ = "project"
+
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     source_folder: str

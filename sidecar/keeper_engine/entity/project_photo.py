@@ -15,6 +15,8 @@ from sqlmodel import Field, SQLModel
 class ProjectPhoto(SQLModel, table=True):
     """项目内的一张照片（workspace 副本）。"""
 
+    __tablename__ = "project_photo"
+
     id: int | None = Field(default=None, primary_key=True)
     project_id: int = Field(index=True)
     workspace_path: str            # ~/.keeper/workspace/{name}/ 下的副本绝对路径

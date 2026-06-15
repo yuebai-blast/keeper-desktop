@@ -17,6 +17,8 @@ from sqlmodel import Field, SQLModel
 class PkState(SQLModel, table=True):
     """某项目某组的 PK 进度快照。"""
 
+    __tablename__ = "pk_state"
+
     id: int | None = Field(default=None, primary_key=True)
     project_id: int = Field(index=True)
     group_key: str = Field(index=True)
