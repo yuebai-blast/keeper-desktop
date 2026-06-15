@@ -16,26 +16,72 @@ class ProjectPhoto(SQLModel, table=True):
     """项目内的一张照片（workspace 副本）。"""
 
     __tablename__ = "project_photo"
+    __table_args__ = {"comment": "项目内单张照片：副本路径、分组归属、两层评分与去留"}
 
-    id: int | None = Field(default=None, primary_key=True)
-    project_id: int = Field(index=True)
-    workspace_path: str            # ~/.keeper/workspace/{name}/ 下的副本绝对路径
-    original_path: str             # 用户原文件路径（只读）
-    filename: str
-    capture_time: datetime | None = Field(default=None)
-    location: str | None = Field(default=None)  # 反查到的拍摄地名（聚合到组/项目展示）
-    group_key: str | None = Field(default=None, index=True)  # 分组后写入 g1/g2…
+    id: int | None = Field(
+        default=None, primary_key=True,
+        sa_column_kwargs={"comment": "主键"},
+    )
+    project_id: int = Field(
+        index=True,
+        sa_column_kwargs={"comment": "所属项目 id"},
+    )
+    workspace_path: str = Field(
+        sa_column_kwargs={"comment": "~/.keeper/workspace/{name}/ 下的副本绝对路径"},
+    )
+    original_path: str = Field(
+        sa_column_kwargs={"comment": "用户原文件绝对路径（只读）"},
+    )
+    filename: str = Field(
+        sa_column_kwargs={"comment": "文件名"},
+    )
+    capture_time: datetime | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "EXIF 拍摄时间（可空）"},
+    )
+    location: str | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "GPS 反查到的拍摄地名（聚合到组/项目展示，可空）"},
+    )
+    group_key: str | None = Field(
+        default=None, index=True,
+        sa_column_kwargs={"comment": "所属瞬间组编号 g1/g2…（分组后写入，可空）"},
+    )
 
     # 层① 本地评分（必有）
-    local_score: float | None = Field(default=None)
-    local_detail: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    local_score: float | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "层① 本地合成分（可空，未评测时为空）"},
+    )
+    local_detail: dict | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True, comment="层① 评分明细 JSON（对应 vo.ScoreDetail）"),
+    )
 
     # 层② 大模型评分（仅层①survivors有）
-    llm_score: float | None = Field(default=None)
-    llm_reason: str = Field(default="")
-    llm_flaws: str = Field(default="")
+    llm_score: float | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "层② 大模型打分（仅层① survivors 有，可空）"},
+    )
+    llm_reason: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "层② 大模型打分理由"},
+    )
+    llm_flaws: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "层② 大模型指出的缺陷"},
+    )
 
     # 漏斗/用户裁决
-    origin: str | None = Field(default=None)      # passed / quota_fill（层②漏斗来源）
-    selection: str | None = Field(default=None)   # kept / discarded
-    rescued: bool = Field(default=False)          # 是否从「未通过」被用户救回
+    origin: str | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "层② 漏斗来源：passed（达标）/ quota_fill（保底补足），可空"},
+    )
+    selection: str | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "最终去留：kept / discarded（可空，未裁决时为空）"},
+    )
+    rescued: bool = Field(
+        default=False,
+        sa_column_kwargs={"comment": "是否从「未通过」被用户救回"},
+    )

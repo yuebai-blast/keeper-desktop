@@ -18,17 +18,54 @@ class Project(SQLModel, table=True):
     """
 
     __tablename__ = "project"
+    __table_args__ = {"comment": "选片项目：一次选片任务的全局状态"}
 
-    id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True, unique=True)
-    source_folder: str
-    workspace_dir: str
-    target_dir: str
-    status: str = Field(default=ProjectStatus.GROUPING.value, index=True)
-    photo_count: int = Field(default=0)
-    time_start: datetime | None = Field(default=None)
-    time_end: datetime | None = Field(default=None)
-    location: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    completed_at: datetime | None = Field(default=None)
+    id: int | None = Field(
+        default=None, primary_key=True,
+        sa_column_kwargs={"comment": "主键"},
+    )
+    name: str = Field(
+        index=True, unique=True,
+        sa_column_kwargs={"comment": "项目名（唯一），输出目录由它派生"},
+    )
+    source_folder: str = Field(
+        sa_column_kwargs={"comment": "用户原文件夹绝对路径（只读，不修改）"},
+    )
+    workspace_dir: str = Field(
+        sa_column_kwargs={"comment": "副本工作目录 ~/.keeper/workspace/{name}"},
+    )
+    target_dir: str = Field(
+        sa_column_kwargs={"comment": "最终归档目录 ~/Pictures/Keeper/{name}"},
+    )
+    status: str = Field(
+        default=ProjectStatus.GROUPING.value, index=True,
+        sa_column_kwargs={"comment": "项目状态：grouping/assessing/reviewing/completed 等"},
+    )
+    photo_count: int = Field(
+        default=0,
+        sa_column_kwargs={"comment": "导入照片总数"},
+    )
+    time_start: datetime | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "聚合的拍摄起始时间（可空）"},
+    )
+    time_end: datetime | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "聚合的拍摄结束时间（可空）"},
+    )
+    location: str | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "聚合的拍摄地名（GPS 反查，尽力而为，可空）"},
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column_kwargs={"comment": "创建时间"},
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column_kwargs={"comment": "最后更新时间"},
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_column_kwargs={"comment": "完成（归档）时间（可空）"},
+    )

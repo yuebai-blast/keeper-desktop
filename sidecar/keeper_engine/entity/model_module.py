@@ -15,9 +15,25 @@ class ModelModule(SQLModel, table=True):
     """
 
     __tablename__ = "model_module"
+    __table_args__ = {"comment": "模型模块下载/加载状态：供前端展示与诊断"}
 
-    name: str = Field(primary_key=True)
-    status: str = Field(default="pending")
-    detail: str = Field(default="")
-    downloaded_bytes: int = Field(default=0)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    name: str = Field(
+        primary_key=True,
+        sa_column_kwargs={"comment": "模块标识：dino / face_group / topiq …（主键）"},
+    )
+    status: str = Field(
+        default="pending",
+        sa_column_kwargs={"comment": "状态：pending/downloading/ready/error"},
+    )
+    detail: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "状态详情（如错误信息）"},
+    )
+    downloaded_bytes: int = Field(
+        default=0,
+        sa_column_kwargs={"comment": "已下载字节数"},
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column_kwargs={"comment": "最后更新时间"},
+    )
