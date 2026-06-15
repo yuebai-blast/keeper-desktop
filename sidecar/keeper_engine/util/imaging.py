@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import os
 from datetime import datetime
@@ -144,17 +143,19 @@ def make_thumbnail(img: Image.Image, max_side: int = 256, quality: int = 80) -> 
     return buf.getvalue()
 
 
-def cached_thumbnail(path: str, thumbs_dir: Path, max_side: int = 256, quality: int = 80) -> bytes:
+def cached_thumbnail(path: str, max_side: int = 256, quality: int = 80) -> bytes:
     """带磁盘缓存的缩略图。命中缓存直接读盘，否则生成并落盘。
 
-    thumbs_dir 由调用方（controller）从配置传入——不在此读环境变量。
-    缓存键 = 绝对路径 + 尺寸 + mtime + 文件大小的哈希——原图改动（mtime/大小变）会自动失效重生。
+    缓存就近落在原图同目录的 `.thumbnails/` 子目录，文件名 `{stem}@{size}.jpg`。
+    workspace 副本是只读不变的——所以缓存键只需 stem+尺寸，无需哈希/mtime 失效判断；
+    缓存随项目 workspace 一起被 rmtree 清理，不留全局孤儿。
     文件不存在则 os.stat 抛 FileNotFoundError（由端点转 404）。
     """
-    st = os.stat(path)  # 不存在 → FileNotFoundError
-    raw_key = f"{os.path.abspath(path)}|{max_side}|q{quality}|{st.st_mtime_ns}|{st.st_size}"
+    src = Path(path)
+    os.stat(src)  # 不存在 → FileNotFoundError
+    thumbs_dir = src.parent / ".thumbnails"
     thumbs_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = thumbs_dir / f"{hashlib.sha1(raw_key.encode()).hexdigest()}.jpg"
+    cache_file = thumbs_dir / f"{src.stem}@{max_side}.jpg"
     if cache_file.exists():
         return cache_file.read_bytes()
 

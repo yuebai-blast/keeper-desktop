@@ -5,7 +5,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { thumbnailUrl } from "../api";
 import Lightbox from "./Lightbox.vue";
 
-const props = defineProps<{ paths: string[] }>();
+const props = defineProps<{ paths: string[]; labels?: string[] }>();
 
 const THUMB_H = 84; // 单行缩略图高度（px），同步 .strip max-height / .thumb height
 
@@ -65,6 +65,7 @@ watch(() => props.paths, () => nextTick(measure));
   <Lightbox
     v-if="lightboxAt !== null"
     :paths="paths"
+    :labels="labels"
     :start="lightboxAt"
     @close="lightboxAt = null"
   />

@@ -32,8 +32,11 @@ class ProjectPhoto(SQLModel, table=True):
     original_path: str = Field(
         sa_column_kwargs={"comment": "用户原文件绝对路径（只读）"},
     )
+    original_rel_path: str = Field(
+        sa_column_kwargs={"comment": "相对 source_folder 的相对路径（posix 风格），完成时据此还原原始目录树"},
+    )
     filename: str = Field(
-        sa_column_kwargs={"comment": "文件名"},
+        sa_column_kwargs={"comment": "原始文件名（= 相对路径最后一段，展示用）"},
     )
     capture_time: datetime | None = Field(
         default=None,

@@ -202,6 +202,7 @@ export interface GroupSummary {
   photo_count: number;
   kept_count: number;
   photo_paths: string[]; // 组内照片的 workspace 路径（供列表页缩略图预览）
+  photo_names: string[]; // 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
 }
 
 /** 组详情/PK 里的一张照片完整信息（层①必有，层②有则展示）。 */

@@ -141,6 +141,39 @@ def test_full_flow_to_completion(svc, tmp_path):
     assert service.get_detail(pid).project.status == "completed"
 
 
+def test_recursive_import_uuid_rename_and_structured_restore(svc, tmp_path):
+    """递归收图 + workspace 改 UUID 名 + 完成时还原原始目录树与原始文件名。"""
+    service, settings = svc
+    src = tmp_path / "source"
+    (src / "day1").mkdir(parents=True)
+    (src / "day2" / "scene").mkdir(parents=True)
+    Image.new("RGB", (8, 8), (10, 0, 0)).save(src / "top.jpg")
+    Image.new("RGB", (8, 8), (20, 0, 0)).save(src / "day1" / "a.jpg")
+    Image.new("RGB", (8, 8), (30, 0, 0)).save(src / "day2" / "scene" / "b.jpg")
+
+    project = service.create("嵌套", str(src))
+    assert project.photo_count == 3  # 递归收齐三层
+
+    # workspace 文件名是 UUID（不等于原始名），但扩展名保留
+    ws = settings.workspace_dir / "嵌套"
+    ws_names = {p.name for p in ws.glob("*.jpg")}
+    assert ws_names and all(n not in {"top.jpg", "a.jpg", "b.jpg"} for n in ws_names)
+
+    # DB 里保留了相对路径（posix），完成时据此还原
+    rels = {p.original_rel_path for p in service._photos.by_project(project.id)}
+    assert rels == {"top.jpg", "day1/a.jpg", "day2/scene/b.jpg"}
+
+    # 全流程到完成
+    service.group(project.id)
+    service.confirm_all(project.id)
+    service.complete(project.id)
+
+    # 输出目录按相对路径还原原始树 + 原始名（kept = 每组第一张）
+    out = settings.output_root / "嵌套"
+    restored = {p.relative_to(out).as_posix() for p in out.rglob("*.jpg")}
+    assert restored and restored <= {"top.jpg", "day1/a.jpg", "day2/scene/b.jpg"}
+
+
 def test_manual_selection_override(svc, tmp_path):
     service, _ = svc
     src = _make_source(tmp_path, 4)

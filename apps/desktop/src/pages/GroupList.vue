@@ -67,7 +67,7 @@ async function submit() {
           <span v-if="g.location">{{ g.location }}</span>
           <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
         </div>
-        <GroupThumbs :paths="g.photo_paths" />
+        <GroupThumbs :paths="g.photo_paths" :labels="g.photo_names" />
       </li>
     </ul>
 

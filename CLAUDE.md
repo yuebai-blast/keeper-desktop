@@ -60,7 +60,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | 端点 | 作用 | 就绪门禁 |
 | :-- | :-- | :-- |
 | `GET /health` | 存活 + 层①模型就绪态（`loading`/`ready`/`error`），后台预热线程更新 | — |
-| `GET /thumbnail?path=&size=` | sidecar 解码（含 RAW/HEIC）并缩放出 JPEG，带磁盘缓存；只走 localhost | — |
+| `GET /thumbnail?path=&size=` | sidecar 解码（含 RAW/HEIC）并缩放出 JPEG；就近缓存于原图同目录 `.thumbnails/{stem}@{size}.jpg`（副本不可变，无需失效判断）；只走 localhost | — |
 | `POST /group` | 把照片路径聚成「瞬间组」 | 需 `ready`，否则 503 |
 | `POST /assess` | 层①本地评分 + 漏斗收口出 survivors | 需 `ready`，否则 503 |
 | `POST /score` | 层②大模型打分 + 组装 PK 候选集 | 不依赖本地模型，缺 key/网络 → 502 |
@@ -76,7 +76,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | 端点 | 作用 | 门禁 |
 | :-- | :-- | :-- |
 | `POST /projects/preview` | 扫描源文件夹：数量 / 拍摄时间范围 / 拍摄地（不建项目） | — |
-| `POST /projects` | 建项目 + 复制副本到 `~/.keeper/workspace/{名}`（不动源） | 名重复→409 |
+| `POST /projects` | 建项目 + **递归**收图、复制副本到 `~/.keeper/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→409 |
 | `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | — |
 | `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→503 |
 | `GET /projects/{id}/groups/{gk}` | 组详情：照片 + 两层评分 + 去留 + PK 进度 | — |
@@ -102,7 +102,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - `service/prescreen_service.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值集中在文件顶部，**在真实照片上标定**。
 - `service/ranking_service.py` + `converter/score_converter.py` — 层②出口：套漏斗 + 给候选标注 passed/quota_fill 来源，组装 PK。
 - `service/{assess,scoring,readiness}_service.py` — 三个端点编排：层①评分收口 / 层②打分组装 / 模型预热与就绪态。
-- `service/project_service.py` — **项目工作流编排核心**：预览/建项目/分组/评测/裁决/确认/完成，复用上面所有引擎 service，把结果落库（持久化权威）。`service/pk_service.py` — PK 擂台状态机（四结局，状态存 `PkState`，每步可恢复），终止时把去留写回 `ProjectPhoto.selection`。`service/workspace_service.py` — workspace 文件操作（扫描/复制副本/归档/清理，重名避让），**只动副本与输出目录，不碰源**。
+- `service/project_service.py` — **项目工作流编排核心**：预览/建项目/分组/评测/裁决/确认/完成，复用上面所有引擎 service，把结果落库（持久化权威）。`service/pk_service.py` — PK 擂台状态机（四结局，状态存 `PkState`，每步可恢复），终止时把去留写回 `ProjectPhoto.selection`。`service/workspace_service.py` — workspace 文件操作：**递归**扫描源图、复制副本时改名为 `{uuid}{原扩展名}`（扁平、回避跨目录/异扩展名重名）、完成时按相对路径 `restore_tree` **还原原始目录树+原名**、清理。**只动副本与输出目录，不碰源**。
 - 持久化层（sqlite）：`config/database.py` 共享 engine（全部 mapper 复用，`create_all` 在 app 启动时建表）；`entity/*` 实体（`Project`/`ProjectPhoto`/`PhotoGroup`/`PkState`/`GeocodeCache`/`ModelModule`）+ `mapper/*` 数据访问。层②/层①评分明细以 JSON 列就地存在 `ProjectPhoto`。
 - `client/geocode_client.py` — 拍摄地在线反查地名（只发 GPS 坐标、不发照片，默认 OSM Nominatim，结果缓存到 `GeocodeCache`）；GPS 读取在 `util/imaging.read_gps`。
 - `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
@@ -119,7 +119,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | 变量 | 作用 |
 | :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
-| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`thumbnails/`、`workspace/`（项目副本）、`keeper.db`、`ark_key` |
+| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key` |
 | `KEEPER_OUTPUT_ROOT` | 选片完成输出根（默认 `~/Pictures/Keeper`），最终输出到 `{此}/{项目名}` |
 | `KEEPER_GEOCODE_ENABLED` / `KEEPER_GEOCODE_URL` | 拍摄地反查开关 / 服务地址（默认 OSM Nominatim，只发坐标） |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
@@ -141,7 +141,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 
 已落地：分组、层①评分、层②大模型打分、PK 候选组装、缩略图缓存。
 
-**项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图复制副本到 `~/.keeper/workspace/{名}`（保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
+**项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图**递归**复制副本到 `~/.keeper/workspace/{名}`（改名为随机 UUID、扁平存放，保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」按原始相对路径**还原目录树+原名**复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
 
 分组已接入人脸身份（ArcFace 人脸集合相似度）拆开「同场景不同人」，多人合影按「是不是同一拨人」区分。
 

@@ -122,6 +122,7 @@ class ProjectService:
         target_dir = str(self._settings.output_root / name)
         mapping = self._workspace.copy_into([str(f) for f in files], workspace_dir)
 
+        base = Path(source_folder)
         rows: list[ProjectPhoto] = []
         times: list[datetime] = []
         locations: list[str] = []
@@ -131,9 +132,11 @@ class ProjectService:
                 times.append(t)
             if loc:
                 locations.append(loc)
+            rel = Path(src).relative_to(base).as_posix()  # 相对源根的路径，完成时据此还原目录树
             rows.append(ProjectPhoto(
                 project_id=0,  # 占位，create 后回填
-                workspace_path=dest, original_path=src, filename=Path(dest).name,
+                workspace_path=dest, original_path=src,
+                original_rel_path=rel, filename=Path(src).name,
                 capture_time=t, location=loc,
             ))
 
@@ -296,7 +299,9 @@ class ProjectService:
             raise HTTPException(status_code=400, detail="还有未确认的分组，无法完成")
 
         kept = self._photos.kept_of(project_id)
-        self._workspace.copy_into([p.workspace_path for p in kept], project.target_dir)
+        # 按相对路径还原原始目录树 + 原始文件名（rel 为空的老数据兜底拍平到原名）
+        items = [(p.workspace_path, p.original_rel_path or p.filename) for p in kept]
+        self._workspace.restore_tree(items, project.target_dir)
         self._workspace.remove_dir(project.workspace_dir)
         project.status = ProjectStatus.COMPLETED.value
         project.completed_at = datetime.now()
@@ -359,6 +364,7 @@ class ProjectService:
             photo_count=len(photos),
             kept_count=sum(1 for p in photos if p.selection == Selection.KEPT.value),
             photo_paths=[p.workspace_path for p in photos],
+            photo_names=[p.original_rel_path or p.filename for p in photos],
         )
 
     @staticmethod

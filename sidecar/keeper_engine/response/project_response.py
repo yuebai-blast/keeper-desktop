@@ -53,6 +53,7 @@ class GroupSummary(BaseModel):
     photo_count: int
     kept_count: int
     photo_paths: list[str] = Field(default_factory=list)  # 组内照片的 workspace 路径（供列表页缩略图预览）
+    photo_names: list[str] = Field(default_factory=list)  # 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
 
 
 class PhotoView(BaseModel):

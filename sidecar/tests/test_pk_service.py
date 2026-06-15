@@ -26,7 +26,7 @@ def ctx(tmp_path):
 
 def _seed(photos: ProjectPhotoMapper, names: list[str]) -> None:
     photos.bulk_create([
-        ProjectPhoto(project_id=PID, workspace_path=n, original_path=n, filename=n, group_key=GK)
+        ProjectPhoto(project_id=PID, workspace_path=n, original_path=n, original_rel_path=n, filename=n, group_key=GK)
         for n in names
     ])
 

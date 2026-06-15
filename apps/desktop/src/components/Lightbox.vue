@@ -4,13 +4,15 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { thumbnailUrl } from "../api";
 import { basename } from "../util/format";
 
-const props = defineProps<{ paths: string[]; start?: number }>();
+const props = defineProps<{ paths: string[]; labels?: string[]; start?: number }>();
 const emit = defineEmits<{ close: [] }>();
 
 const idx = ref(props.start ?? 0);
 watch(() => props.start, (v) => (idx.value = v ?? 0));
 
 const current = computed(() => props.paths[idx.value]);
+// 优先展示带路径的原始文件名（labels），无则退回 workspace 文件名
+const caption = computed(() => props.labels?.[idx.value] ?? basename(current.value));
 const multi = computed(() => props.paths.length > 1);
 
 function prev() {
@@ -38,7 +40,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       <figure class="stage" @click.self="emit('close')">
         <img :key="current" :src="thumbnailUrl(current, 1600)" alt="" />
         <figcaption>
-          <span class="name">{{ basename(current) }}</span>
+          <span class="name">{{ caption }}</span>
           <span v-if="multi" class="of">{{ idx + 1 }} / {{ paths.length }}</span>
         </figcaption>
       </figure>

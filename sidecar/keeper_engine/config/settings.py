@@ -3,8 +3,9 @@
 可配置项从「配置文件 ~/.keeper/config.toml」与「环境变量（KEEPER_ 前缀）」加载，优先级：
 构造参数 > 环境变量 > 配置文件 > 字段默认值。派生路径与固定常量写死在类里，不对外暴露为配置。
 
-所有本地资源统一放在数据根 home（默认 ~/.keeper）下：models/ 模型、thumbnails/ 缩略图、
-keeper.db 状态库、ark_key 大模型 key（0600）。子路径均由 home 派生（computed）。
+所有本地资源统一放在数据根 home（默认 ~/.keeper）下：models/ 模型、workspace/ 项目副本、
+keeper.db 状态库、ark_key 大模型 key（0600）。缩略图就近缓存在各 workspace 项目的 .thumbnails/
+（随项目清理，不占全局目录）。子路径均由 home 派生（computed）。
 算法标定阈值随各自模块就近保留，不在此。
 """
 
@@ -64,11 +65,6 @@ class Settings(BaseSettings):
     @property
     def models_dir(self) -> Path:
         return self.home / "models"
-
-    @computed_field
-    @property
-    def thumbs_dir(self) -> Path:
-        return self.home / "thumbnails"
 
     @computed_field
     @property

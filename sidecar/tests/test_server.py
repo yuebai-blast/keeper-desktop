@@ -140,7 +140,7 @@ def test_score_502_when_scorer_unavailable(app, client, monkeypatch):
 
 
 def test_thumbnail_returns_jpeg(client, monkeypatch):
-    monkeypatch.setattr("keeper_engine.util.imaging.cached_thumbnail", lambda p, thumbs_dir, **k: b"\xff\xd8jpeg")
+    monkeypatch.setattr("keeper_engine.util.imaging.cached_thumbnail", lambda p, **k: b"\xff\xd8jpeg")
     resp = client.get("/thumbnail", params={"path": "/x.jpg", "size": 256})
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/jpeg"
@@ -148,7 +148,7 @@ def test_thumbnail_returns_jpeg(client, monkeypatch):
 
 
 def test_thumbnail_404_on_bad_path(client, monkeypatch):
-    def boom(p, thumbs_dir, **k):
+    def boom(p, **k):
         raise FileNotFoundError("nope")
 
     monkeypatch.setattr("keeper_engine.util.imaging.cached_thumbnail", boom)
