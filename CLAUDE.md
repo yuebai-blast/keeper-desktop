@@ -83,7 +83,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - `service/prescreen_service.py` — 层①合成分（TOPIQ + CLIP-IQA+ + 主体锐度，再按闭眼/脱焦/曝光等扣分）；阈值集中在文件顶部，**在真实照片上标定**。
 - `service/ranking_service.py` + `converter/score_converter.py` — 层②出口：套漏斗 + 给候选标注 passed/quota_fill 来源，组装 PK。
 - `service/{assess,scoring,readiness}_service.py` — 三个端点编排：层①评分收口 / 层②打分组装 / 模型预热与就绪态。
-- `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.cache/keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
+- `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
 - `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
 桌面端：文件系统访问（导入扫图、归档写回）**只在 Rust 壳**（`src-tauri/src/lib.rs` 的 `import_photos` / `archive_decisions` 命令），前端碰不到 FS；前端状态在 Pinia stores（`engine` 连接态、`library` 库/分组/评分/裁决/归档）。
@@ -92,11 +92,15 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 
 | 变量 | 作用 |
 | :-- | :-- |
+配置集中在 `config/settings.py`（pydantic-settings），可配项从 `~/.keeper/config.toml` 与 `KEEPER_*` 环境变量加载（环境变量优先），子路径全部派生自数据根 `~/.keeper`。
+
+| 变量 | 作用 |
+| :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
+| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`thumbnails/`、`keeper.db`、`ark_key` |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
-| `KEEPER_MODELS_DIR` | 本地模型缓存根（默认 `~/.cache/keeper/models`） |
 | `KEEPER_DINO_MODEL` / `KEEPER_FACE_PACK` | 切分组/人脸模型（默认 `facebook/dinov2-small` / `buffalo_l`） |
-| `ARK_API_KEY` | 大模型 key；也可写入 `~/.config/keeper/ark_key`（0600），绝不入库 |
+| `ARK_API_KEY` | 大模型 key；也可写入 `~/.keeper/ark_key`（0600），绝不入库 |
 | `KEEPER_ARK_MODEL` / `KEEPER_ARK_BASE_URL` / `KEEPER_ARK_CONCURRENCY` | Ark 模型 id / 基址 / 并发数 |
 
 ## 关键约定
@@ -105,7 +109,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - **工具链钉死**：`[tools]` 里所有版本必须是具体版本号，禁止 `latest`，保证可复现。新增工具/命令一律沉淀到 `mise.toml`，不散落到零散脚本。
 - **OpenCV 三包冲突**：`sidecar/pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回依赖。
 - **不静默降级**：本地推理依赖缺失或模型加载失败立刻抛异常，不悄悄退化。
-- **API key 本地管理**：大模型 key 存在 `~/.config/keeper/`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。
+- **API key 本地管理**：大模型 key 存在 `~/.keeper/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。
 - **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务。
 - **中文书写**：CLAUDE.md、README、`docs/`、代码注释、Git 提交信息一律用简体中文；代码标识符/API 名保持英文。
 

@@ -5,7 +5,7 @@ from keeper_engine.mapper.model_module_mapper import ModelModuleMapper
 
 
 def _mapper(tmp_path) -> ModelModuleMapper:
-    return ModelModuleMapper(Settings(models_dir=tmp_path))
+    return ModelModuleMapper(Settings(home=tmp_path))
 
 
 def test_upsert_inserts_then_updates(tmp_path):

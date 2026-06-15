@@ -1,45 +1,84 @@
-"""集中的部署/运行配置——收口原先散落在各模块的环境变量读取。
+"""集中配置类——启动初始化一次，由 DI 以单例注入。
 
-这里只放「部署/运行配置」（服务地址、外部 API、设备、缓存目录等），由 DI 容器以单例注入
-给各 client/service。算法**标定阈值**（grouping/prescreen/funnel 顶部的可调旋钮）属于算法参数，
-不在这里，随各自模块就近保留。
+可配置项从「配置文件 ~/.keeper/config.toml」与「环境变量（KEEPER_ 前缀）」加载，优先级：
+构造参数 > 环境变量 > 配置文件 > 字段默认值。派生路径与固定常量写死在类里，不对外暴露为配置。
 
-无参构造即从环境变量取默认值（dependency-injector 的 Singleton(Settings) 会这样实例化）。
+所有本地资源统一放在数据根 home（默认 ~/.keeper）下：models/ 模型、thumbnails/ 缩略图、
+keeper.db 状态库、ark_key 大模型 key（0600）。子路径均由 home 派生（computed）。
+算法标定阈值随各自模块就近保留，不在此。
 """
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
+
+from pydantic import computed_field, field_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
+
+_CONFIG_FILE = Path.home() / ".keeper" / "config.toml"
 
 
-def _default_models_dir() -> Path:
-    return Path(os.environ.get("KEEPER_MODELS_DIR", str(Path.home() / ".cache" / "keeper" / "models")))
+class Settings(BaseSettings):
+    """运行期配置。改 ~/.keeper/config.toml 或设 KEEPER_* 环境变量即可覆盖。"""
 
+    model_config = SettingsConfigDict(env_prefix="KEEPER_", toml_file=_CONFIG_FILE, extra="ignore")
 
-@dataclass
-class Settings:
-    """运行期配置；字段默认值从环境变量读取，便于本地/打包环境覆盖。"""
-
-    # ── 服务监听（仅本机；main.py 的 --host/--port 可再覆盖）──
-    host: str = field(default_factory=lambda: os.environ.get("KEEPER_HOST", "127.0.0.1"))
-    port: int = field(default_factory=lambda: int(os.environ.get("KEEPER_PORT", "8761")))
+    # ── 固定常量（代码逻辑固定，不可配）──
     # 桌面端 Tauri webview 跨源调用本服务，放行本地来源（服务只绑 127.0.0.1，安全）
-    cors_origin_regex: str = r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$"
+    cors_origin_regex: ClassVar[str] = r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$"
 
-    # ── 本地模型（VisionClient）──
-    device: str = field(default_factory=lambda: os.environ.get("KEEPER_DEVICE", "").lower())
-    models_dir: Path = field(default_factory=_default_models_dir)
-    dino_model: str = field(default_factory=lambda: os.environ.get("KEEPER_DINO_MODEL", "facebook/dinov2-small"))
-    face_pack: str = field(default_factory=lambda: os.environ.get("KEEPER_FACE_PACK", "buffalo_l"))
+    # ── 可配置项 ──
+    home: Path = Path.home() / ".keeper"  # 统一数据根
+    host: str = "127.0.0.1"               # 仅本机；main.py 的 --host/--port 可再覆盖
+    port: int = 8761
+    device: str = ""                      # ""=自动（CPU，有 CUDA 用 CUDA）/ "cuda" / "cpu"
+    dino_model: str = "facebook/dinov2-small"
+    face_pack: str = "buffalo_l"
+    # 层② 大模型（火山 Ark，OpenAI 兼容）；模型 id 必须由配置/环境提供，默认空作兜底占位
+    ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
+    ark_model: str = ""
+    ark_concurrency: int = 4
 
-    # ── 层② 大模型（火山 Ark，OpenAI 兼容；LocalDirectScorer）──
-    ark_base_url: str = field(
-        default_factory=lambda: os.environ.get("KEEPER_ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-    )
-    # 模型 id 必须由调用方/环境提供（不同账号开通的模型不同），这里只是兜底占位
-    ark_model: str = field(default_factory=lambda: os.environ.get("KEEPER_ARK_MODEL", ""))
-    ark_concurrency: int = field(default_factory=lambda: int(os.environ.get("KEEPER_ARK_CONCURRENCY", "4")))
-    # API key 本地管理：env ARK_API_KEY 或此文件（0600），绝不入库（CLAUDE.md）
-    ark_key_file: Path = field(default_factory=lambda: Path.home() / ".config" / "keeper" / "ark_key")
+    @field_validator("device")
+    @classmethod
+    def _normalize_device(cls, v: str) -> str:
+        return v.lower()
+
+    # ── 派生路径（由 home 计算，不单独配置）──
+    @computed_field
+    @property
+    def models_dir(self) -> Path:
+        return self.home / "models"
+
+    @computed_field
+    @property
+    def thumbs_dir(self) -> Path:
+        return self.home / "thumbnails"
+
+    @computed_field
+    @property
+    def db_path(self) -> Path:
+        return self.home / "keeper.db"
+
+    @computed_field
+    @property
+    def ark_key_file(self) -> Path:
+        return self.home / "ark_key"
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # 优先级：构造参数 > 环境变量 > 配置文件（toml）
+        return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))

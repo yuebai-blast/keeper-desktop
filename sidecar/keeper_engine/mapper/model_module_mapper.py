@@ -1,12 +1,13 @@
 """模型模块状态的数据访问（SQLModel / sqlite）。
 
-库文件放在模型缓存目录下的 keeper.db。engine 跨线程复用（预热在后台线程写、/health 在
-请求线程读），故 check_same_thread=False；每次操作新开 Session。
+库文件为 settings.db_path（统一数据根 ~/.keeper/keeper.db）。engine 跨线程复用（预热在后台
+线程写、/health 在请求线程读），故 check_same_thread=False；每次操作新开 Session。
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -18,7 +19,7 @@ class ModelModuleMapper:
     """模型模块下载/加载状态的增改查。"""
 
     def __init__(self, settings: Settings) -> None:
-        db_path = settings.models_dir / "keeper.db"
+        db_path = Path(settings.db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._engine = create_engine(
             f"sqlite:///{db_path}", connect_args={"check_same_thread": False}

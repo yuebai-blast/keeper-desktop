@@ -144,21 +144,17 @@ def make_thumbnail(img: Image.Image, max_side: int = 256, quality: int = 80) -> 
     return buf.getvalue()
 
 
-def _thumbs_dir() -> Path:
-    d = Path(os.environ.get("KEEPER_THUMBS_DIR", Path.home() / ".cache" / "keeper" / "thumbnails"))
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def cached_thumbnail(path: str, max_side: int = 256, quality: int = 80) -> bytes:
+def cached_thumbnail(path: str, thumbs_dir: Path, max_side: int = 256, quality: int = 80) -> bytes:
     """带磁盘缓存的缩略图。命中缓存直接读盘，否则生成并落盘。
 
+    thumbs_dir 由调用方（controller）从配置传入——不在此读环境变量。
     缓存键 = 绝对路径 + 尺寸 + mtime + 文件大小的哈希——原图改动（mtime/大小变）会自动失效重生。
     文件不存在则 os.stat 抛 FileNotFoundError（由端点转 404）。
     """
     st = os.stat(path)  # 不存在 → FileNotFoundError
     raw_key = f"{os.path.abspath(path)}|{max_side}|q{quality}|{st.st_mtime_ns}|{st.st_size}"
-    cache_file = _thumbs_dir() / f"{hashlib.sha1(raw_key.encode()).hexdigest()}.jpg"
+    thumbs_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = thumbs_dir / f"{hashlib.sha1(raw_key.encode()).hexdigest()}.jpg"
     if cache_file.exists():
         return cache_file.read_bytes()
 

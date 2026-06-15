@@ -29,7 +29,7 @@ class FakeVision:
 
 
 def _svc(tmp_path, fail=None, fail_at=0) -> ReadinessService:
-    settings = Settings(models_dir=tmp_path)
+    settings = Settings(home=tmp_path)
     return ReadinessService(FakeVision(fail, fail_at), settings, ModelModuleMapper(settings))
 
 
@@ -83,5 +83,7 @@ def test_reload_forces_when_not_loading(tmp_path, monkeypatch):
 
 def test_first_run_detection(tmp_path):
     assert _svc(tmp_path).first_run is True            # 空目录 → 首次
-    (tmp_path / "model.onnx").write_bytes(b"x")
+    models = tmp_path / "models"                       # 与 Settings(home).models_dir 一致
+    models.mkdir(parents=True, exist_ok=True)
+    (models / "model.onnx").write_bytes(b"x")
     assert _svc(tmp_path).first_run is False           # 有权重 → 非首次

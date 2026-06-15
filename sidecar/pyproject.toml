@@ -38,6 +38,8 @@ dependencies = [
     "dependency-injector>=4.41",
     # ── 本地状态持久化（模型下载/加载状态）：SQLModel = pydantic v2 + SQLAlchemy 2 ──
     "sqlmodel>=0.0.22",
+    # ── 集中配置（配置文件 + 环境变量加载）：pydantic 官方配套 ──
+    "pydantic-settings>=2.5",
 ]
 
 [dependency-groups]
