@@ -20,9 +20,14 @@ const view = computed<View>(() => {
   return "loading";
 });
 
-const progress = computed(() => engine.health?.progress ?? { current: 0, total: 0, step: "" });
+const progress = computed(
+  () => engine.health?.progress ?? { current: 0, total: 0, step: "", downloaded_mb: 0, speed_mbps: 0, percent: 0 },
+);
+// 有实际下载流量时（首次/缺权重）才显示速度与字节，进度用字节百分比；否则用模块步骤进度
+const hasDownload = computed(() => progress.value.speed_mbps > 0 || progress.value.downloaded_mb > 0);
 const pct = computed(() => {
   const p = progress.value;
+  if (hasDownload.value || engine.firstRun) return p.percent;
   return p.total ? Math.round((p.current / p.total) * 100) : 0;
 });
 const version = computed(() => engine.health?.version ?? "");
@@ -74,7 +79,8 @@ onUnmounted(() => window.clearTimeout(enterTimer));
 
         <!-- 加载 / 下载中 -->
         <div v-else-if="view === 'loading'" key="loading" class="stage">
-          <p v-if="engine.firstRun" class="banner">
+          <p v-if="engine.needsRepair" class="line warn">模型需要重新加载…</p>
+          <p v-else-if="engine.firstRun" class="banner">
             首次启动 · 正在为你下载本地 AI 模型<em>仅此一次，之后完全离线运行</em>
           </p>
           <p v-else class="line">正在载入本地模型…</p>
@@ -82,9 +88,10 @@ onUnmounted(() => window.clearTimeout(enterTimer));
           <div class="meter">
             <div class="track"><div class="fill" :style="{ width: pct + '%' }" /></div>
             <div class="meta">
-              <span class="step">{{ progress.step || "准备中" }}</span>
-              <span class="count">{{ progress.current }} / {{ progress.total || "·" }}</span>
+              <span class="step">{{ progress.step ? "正在加载 " + progress.step : "准备中" }} · {{ progress.current }}/{{ progress.total || "·" }}</span>
+              <span class="count">{{ pct }}%</span>
             </div>
+            <div v-if="hasDownload" class="dl">已下载 {{ progress.downloaded_mb }} MB · {{ progress.speed_mbps }} MB/s</div>
           </div>
         </div>
 
@@ -267,6 +274,13 @@ onUnmounted(() => window.clearTimeout(enterTimer));
 }
 .meta .step { color: var(--ink-dim); }
 .meta .count { color: var(--amber); letter-spacing: 0.04em; }
+.dl {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.03em;
+}
 
 /* 光圈装饰 */
 .aperture {

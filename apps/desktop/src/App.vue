@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { thumbnailUrl, type Group } from "./api";
 import Arena from "./components/Arena.vue";
 import SplashView from "./components/SplashView.vue";
@@ -52,6 +52,19 @@ function onArenaFinish(winner: string | null, losers: string[]) {
   arenaGroup.value = null;
 }
 
+// 穿过加载页进入应用；修复完成（重新加载页 emit enter）时一并清掉修复标记
+function onEnter() {
+  entered.value = true;
+  engine.clearRepair();
+}
+// 运行时触发修复（needsRepair）→ 重新加载已转 loading，重启轮询刷新进度
+watch(
+  () => engine.needsRepair,
+  (v) => {
+    if (v) startPoll();
+  },
+);
+
 onMounted(async () => {
   await engine.refresh();
   startPoll();
@@ -60,7 +73,7 @@ onUnmounted(stopPoll);
 </script>
 
 <template>
-  <SplashView v-if="!entered" @enter="entered = true" />
+  <SplashView v-if="!entered || engine.needsRepair" @enter="onEnter" />
 
   <main v-else class="app">
     <header class="topbar">

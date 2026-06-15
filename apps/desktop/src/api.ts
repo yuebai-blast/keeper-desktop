@@ -5,9 +5,12 @@ const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
 
 /** 模型加载进度。 */
 export interface Progress {
-  current: number; // 已完成的步骤数
+  current: number; // 正在加载的步骤序号（1-based）
   total: number; // 总步骤数
-  step: string; // 当前正在加载的步骤名
+  step: string; // 当前正在加载的模块名
+  downloaded_mb: number; // 本轮已下载量（MB）
+  speed_mbps: number; // 实时下载速度（MB/s）
+  percent: number; // 估算总进度百分比
 }
 
 /** /health 返回：模型就绪态 + 加载进度。 */
@@ -20,11 +23,30 @@ export interface Health {
   progress: Progress;
 }
 
+/** 带 HTTP 状态码的 API 错误（供前端区分「模型不可用 503」以进修复页）。 */
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function ensureOk(resp: Response): Promise<void> {
+  if (resp.ok) return;
+  let detail = `${resp.status} ${resp.statusText}`;
+  try {
+    const body = await resp.json();
+    if (body?.detail) detail = body.detail;
+  } catch {
+    /* 非 JSON 响应，保留默认信息 */
+  }
+  throw new ApiError(resp.status, detail);
+}
+
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(`${BASE}${path}`);
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-  }
+  await ensureOk(resp);
   return resp.json() as Promise<T>;
 }
 
@@ -36,6 +58,11 @@ export function getHealth(): Promise<Health> {
 /** 重新预热模型（仅在可重试的 error 时生效，用于下载失败重试）。返回最新就绪态。 */
 export function retryWarmup(): Promise<Health> {
   return post<Health>("/warmup/retry", {});
+}
+
+/** 强制重新加载模型（运行时模型不可用时的修复入口）。返回最新就绪态。 */
+export function reloadModels(): Promise<Health> {
+  return post<Health>("/warmup/reload", {});
 }
 
 /** 一个「瞬间组」。 */
@@ -60,9 +87,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-  }
+  await ensureOk(resp);
   return resp.json() as Promise<T>;
 }
 

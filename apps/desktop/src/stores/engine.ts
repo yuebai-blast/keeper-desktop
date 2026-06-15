@@ -1,12 +1,14 @@
 // 引擎（sidecar）连接状态的 Pinia store。
 import { defineStore } from "pinia";
-import { getHealth, retryWarmup, type Health } from "../api";
+import { ApiError, getHealth, reloadModels, retryWarmup, type Health } from "../api";
 
 interface EngineState {
   health: Health | null;
   // connecting: 正在连/重试；offline: 连不上（服务没起）
   phase: "connecting" | "online" | "offline";
   error: string;
+  // 运行时发现模型不可用 → 需回到加载页修复（重新加载模型）
+  needsRepair: boolean;
 }
 
 export const useEngineStore = defineStore("engine", {
@@ -14,6 +16,7 @@ export const useEngineStore = defineStore("engine", {
     health: null,
     phase: "connecting",
     error: "",
+    needsRepair: false,
   }),
   getters: {
     // 模型是否就绪可服务
@@ -45,6 +48,29 @@ export const useEngineStore = defineStore("engine", {
         this.phase = "offline";
         this.error = e instanceof Error ? e.message : String(e);
       }
+    },
+    // 运行时 API 报错时调用：若是「模型不可用 503」，进入修复（强制重新加载模型）。
+    reportError(e: unknown) {
+      if (e instanceof ApiError && e.status === 503 && this.health?.status === "ready") {
+        this.needsRepair = true;
+        void this.repair();
+      }
+    },
+    // 修复：强制后端重新加载模型，本地状态切回 loading（加载页随就绪态显示进度）。
+    async repair() {
+      // 乐观切 loading，避免修复瞬间 health 仍为 ready 而误触发加载页「自动进入」
+      if (this.health) this.health = { ...this.health, status: "loading" };
+      try {
+        this.health = await reloadModels();
+        this.phase = "online";
+        this.error = "";
+      } catch (e) {
+        this.phase = "offline";
+        this.error = e instanceof Error ? e.message : String(e);
+      }
+    },
+    clearRepair() {
+      this.needsRepair = false;
     },
   },
 });

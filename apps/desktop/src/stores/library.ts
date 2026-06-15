@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { defineStore } from "pinia";
 import { assessGroup, groupPhotos, type Group, type LocalScore, type PhotoError } from "../api";
+import { useEngineStore } from "./engine";
 
 /** 一个组的层①评分结果。 */
 interface GroupAssessment {
@@ -80,6 +81,7 @@ export const useLibraryStore = defineStore("library", {
         this.imported = true;
       } catch (e) {
         this.error = e instanceof Error ? e.message : String(e);
+        useEngineStore().reportError(e); // 模型不可用(503) → 进修复页
       } finally {
         this.busy = false;
       }
@@ -95,6 +97,7 @@ export const useLibraryStore = defineStore("library", {
         a.m = res.m;
       } catch (e) {
         a.error = e instanceof Error ? e.message : String(e);
+        useEngineStore().reportError(e); // 模型不可用(503) → 进修复页
       } finally {
         a.busy = false;
       }
