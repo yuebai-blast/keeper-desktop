@@ -4,6 +4,7 @@ import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectsStore } from "../stores/projects";
 import { fmtTimeRange } from "../util/format";
+import GroupThumbs from "../components/GroupThumbs.vue";
 
 const props = defineProps<{ id: string }>();
 const store = useProjectsStore();
@@ -66,6 +67,7 @@ async function submit() {
           <span v-if="g.location">{{ g.location }}</span>
           <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
         </div>
+        <GroupThumbs :paths="g.photo_paths" />
       </li>
     </ul>
 

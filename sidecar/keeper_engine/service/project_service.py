@@ -358,6 +358,7 @@ class ProjectService:
             time_start=group.time_start, time_end=group.time_end, status=group.status,
             photo_count=len(photos),
             kept_count=sum(1 for p in photos if p.selection == Selection.KEPT.value),
+            photo_paths=[p.workspace_path for p in photos],
         )
 
     @staticmethod

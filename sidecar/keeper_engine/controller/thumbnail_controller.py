@@ -17,7 +17,7 @@ router = APIRouter()
 @inject
 def thumbnail(
     path: str = Query(..., description="照片绝对路径"),
-    size: int = Query(256, ge=32, le=1024, description="缩略图长边像素"),
+    size: int = Query(256, ge=32, le=2048, description="缩略图长边像素（放大预览用更大尺寸）"),
     settings: Settings = Depends(Provide[Container.settings]),
 ) -> Response:
     """生成并返回一张照片的缩略图 JPEG（桌面端画廊用）。
