@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 
 import tomli_w
+from volcenginesdkarkruntime import Ark
 
 from ..config.settings import Settings
 from ..enumeration.biz_code import BizCode
@@ -45,18 +46,16 @@ class SettingsService:
         不落任何配置——纯连通性校验。失败抛 BizException(SCORER_FAILED) 并带回详情。成功返回当前快照。
         """
         key, model, base_url = self._effective(req)
+        client = Ark(api_key=key, base_url=base_url)
         try:
-            from openai import OpenAI
-        except ImportError as e:  # 理论上不会缺（依赖已声明），保险起见显式报错
-            raise BizException(BizCode.SCORER_FAILED, f"缺少 openai 依赖：{e}") from e
-        client = OpenAI(api_key=key, base_url=base_url)
-        try:
-            # max_tokens=1 的最小调用：一次性验证鉴权 + 模型 id + 基址是否都有效
-            client.chat.completions.create(
+            # max_output_tokens=1 的最小调用：一次性验证鉴权 + 模型 id + 基址是否都有效。
+            # 关思考：避免思维链吃掉这 1 token 预算，让连通性校验稳定完成。
+            client.responses.create(
                 model=model,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
+                input="ping",
+                max_output_tokens=1,
                 temperature=0.0,
+                thinking={"type": "disabled"},
             )
         except Exception as e:  # noqa: BLE001 —— 任何失败都翻成可读的连接错误回前端
             raise BizException(BizCode.SCORER_FAILED, f"连接失败：{e}") from e

@@ -20,6 +20,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
+from volcenginesdkarkruntime import Ark
+
 from ..config.settings import Settings
 from ..exception.errors import ScorerError
 from ..vo.score import Score
@@ -47,6 +49,22 @@ class Scorer(Protocol):
 
     def score(self, previews: list[Preview], model: str) -> list[Score]:
         ...
+
+
+def extract_output_text(resp) -> str:
+    """从 Responses API 结果里拼出助手文本：遍历 output 的 message 项、取其 output_text 内容。
+
+    Responses API 的 resp.output 是混合列表（可能含 reasoning 等非消息项），且本 SDK 无 output_text
+    便捷属性，故显式只取 type=="message" 项里 type=="output_text" 的 text，跳过其余块。
+    """
+    parts: list[str] = []
+    for item in resp.output or []:
+        if getattr(item, "type", None) != "message":
+            continue
+        for content in getattr(item, "content", None) or []:
+            if getattr(content, "type", None) == "output_text":
+                parts.append(content.text)
+    return "".join(parts)
 
 
 def parse_response(text: str) -> tuple[float, str, str]:
@@ -82,14 +100,10 @@ class LocalDirectScorer:
             return key_file.read_text(encoding="utf-8").strip()
         raise ScorerError(f"未找到 Ark API key（设环境变量 ARK_API_KEY 或写入 {key_file}）")
 
-    def _client(self, model: str):
+    def _client(self, model: str) -> Ark:
         if not model:
             raise ScorerError("未指定 Ark 模型 id（请求字段 model 或环境变量 KEEPER_ARK_MODEL）")
-        try:
-            from openai import OpenAI
-        except ImportError as e:
-            raise ScorerError(f"缺少 openai 依赖：{e}") from e
-        return OpenAI(api_key=self._load_api_key(), base_url=self._settings.ark_base_url)
+        return Ark(api_key=self._load_api_key(), base_url=self._settings.ark_base_url)
 
     def score(self, previews: list[Preview], model: str) -> list[Score]:
         if not previews:
@@ -99,22 +113,27 @@ class LocalDirectScorer:
         with ThreadPoolExecutor(max_workers=workers) as ex:
             return list(ex.map(lambda p: self._score_one(client, model, p), previews))
 
-    def _score_one(self, client, model: str, preview: Preview) -> Score:
+    def _score_one(self, client: Ark, model: str, preview: Preview) -> Score:
+        # 内存低清预览直接 base64 拼成 data URL（火山 Ark「Base64 编码传入」）；照片不出本地、用完即焚。
         data_url = "data:image/jpeg;base64," + base64.b64encode(preview.jpeg).decode("ascii")
         last_err: Exception | None = None
         for _ in range(2):  # 失败重试一次
             try:
-                resp = client.chat.completions.create(
+                resp = client.responses.create(
                     model=model,
-                    messages=[{"role": "user", "content": [
-                        {"type": "text", "text": _layer2_prompt()},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ]}],
+                    input=[
+                        {"role": "user", "content": [
+                            {"type": "input_text", "text": _layer2_prompt()},
+                            {"type": "input_image", "image_url": data_url},
+                        ]}
+                    ],
                     temperature=0.0,
-                    max_tokens=400,
+                    max_output_tokens=400,
+                    # 打分提示词要求「只输出 JSON」，无需思维链；且 max_output_tokens 含思维链，
+                    # 开思考会吃掉回答预算导致 JSON 截断，故显式关闭（见火山 Response 文档）。
+                    thinking={"type": "disabled"},
                 )
-                text = resp.choices[0].message.content or ""
-                score, reason, flaws = parse_response(text)
+                score, reason, flaws = parse_response(extract_output_text(resp))
                 return Score(path=preview.path, score=score, reason=reason, flaws=flaws)
             except Exception as e:  # noqa: BLE001 —— 重试后仍失败则包装上抛
                 last_err = e

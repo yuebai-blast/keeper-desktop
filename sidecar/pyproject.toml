@@ -32,8 +32,8 @@ dependencies = [
     # ── 互补美学 / 质量评分（MUSIQ + CLIP-IQA+）──
     "pyiqa>=0.1.10",
     "timm>=0.9",
-    # ── 大模型打分（火山 Ark，OpenAI 兼容协议）；经 Scorer 接口封装 ──
-    "openai>=1.40",
+    # ── 大模型打分（火山 Ark 官方 SDK：volcenginesdkarkruntime.Ark）；经 Scorer 接口封装 ──
+    "volcengine-python-sdk[ark]>=5.0.34",
     # ── 依赖注入容器（分层架构：controller/service/client 经 DI 装配）──
     "dependency-injector>=4.41",
     # ── 本地状态持久化（模型下载/加载状态）：SQLModel = pydantic v2 + SQLAlchemy 2 ──
@@ -42,7 +42,6 @@ dependencies = [
     "pydantic-settings>=2.5",
     # ── 写回 config.toml（设置页持久化 ark 配置）；读用标准库 tomllib，写用 tomli-w ──
     "tomli-w>=1.0",
-    "volcengine-python-sdk[ark]>=5.0.34",
 ]
 
 [dependency-groups]

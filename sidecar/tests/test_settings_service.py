@@ -2,7 +2,7 @@
 
 覆盖：①get 不漏 key 明文 ②测连接缺 key/失败 → SCORER_FAILED ③update 先测后存
 （测不通不落配置）④key 写 0600、model 落 config.toml 即时生效、空 key 不覆盖既有。
-大模型调用用假 openai.OpenAI 桩掉，不打真网络。
+大模型调用用假 Ark 客户端桩掉，不打真网络。
 """
 
 from __future__ import annotations
@@ -26,16 +26,16 @@ def svc(tmp_path, monkeypatch):
     return SettingsService(settings), settings
 
 
-def _stub_openai(monkeypatch, *, fail=False):
-    """把 openai.OpenAI 换成假实现：fail=True 时 create 抛错，模拟连不上。"""
+def _stub_ark(monkeypatch, *, fail=False):
+    """把 settings_service 里引用的 Ark 换成假实现：fail=True 时 create 抛错，模拟连不上。"""
 
     def _create(**_kw):
         if fail:
             raise RuntimeError("boom")
-        return SimpleNamespace(choices=[])
+        return SimpleNamespace(output=[])
 
-    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=_create)))
-    monkeypatch.setattr("openai.OpenAI", lambda **_kw: fake)
+    fake = SimpleNamespace(responses=SimpleNamespace(create=_create))
+    monkeypatch.setattr("keeper_engine.service.settings_service.Ark", lambda **_kw: fake)
 
 
 def test_get_reports_key_absent_and_never_leaks_plaintext(svc):
@@ -55,7 +55,7 @@ def test_test_connection_missing_key_raises(svc):
 
 def test_test_connection_wraps_failure(svc, monkeypatch):
     service, _ = svc
-    _stub_openai(monkeypatch, fail=True)
+    _stub_ark(monkeypatch, fail=True)
     with pytest.raises(BizException) as ei:
         service.test_connection(UpdateSettingsRequest(ark_key="sk", ark_model="m"))
     assert ei.value.biz is BizCode.SCORER_FAILED
@@ -64,7 +64,7 @@ def test_test_connection_wraps_failure(svc, monkeypatch):
 
 def test_test_connection_success_does_not_persist(svc, monkeypatch):
     service, settings = svc
-    _stub_openai(monkeypatch)
+    _stub_ark(monkeypatch)
     view = service.test_connection(UpdateSettingsRequest(ark_key="sk", ark_model="m"))
     assert view.ark_model == "seed-model"  # 测试不落配置
     assert not settings.ark_key_file.exists()  # 测试也不写 key
@@ -72,7 +72,7 @@ def test_test_connection_success_does_not_persist(svc, monkeypatch):
 
 def test_update_blocked_when_connection_fails(svc, monkeypatch):
     service, settings = svc
-    _stub_openai(monkeypatch, fail=True)
+    _stub_ark(monkeypatch, fail=True)
     with pytest.raises(BizException):
         service.update(UpdateSettingsRequest(ark_key="sk", ark_model="ep-new"))
     # 测不通：key 没写、model 没改
@@ -82,7 +82,7 @@ def test_update_blocked_when_connection_fails(svc, monkeypatch):
 
 def test_update_writes_key_0600_after_passing(svc, monkeypatch):
     service, settings = svc
-    _stub_openai(monkeypatch)
+    _stub_ark(monkeypatch)
     view = service.update(UpdateSettingsRequest(ark_key="sk-secret"))
     assert view.ark_key_set is True
     key_file = settings.ark_key_file
@@ -92,7 +92,7 @@ def test_update_writes_key_0600_after_passing(svc, monkeypatch):
 
 def test_update_model_takes_effect_in_memory_and_persists_toml(svc, monkeypatch):
     service, settings = svc
-    _stub_openai(monkeypatch)
+    _stub_ark(monkeypatch)
     service.update(UpdateSettingsRequest(ark_key="sk", ark_model="ep-new", ark_base_url="https://x/api"))
     assert settings.ark_model == "ep-new"  # 内存单例即时生效
     assert settings.ark_base_url == "https://x/api"
@@ -103,7 +103,7 @@ def test_update_model_takes_effect_in_memory_and_persists_toml(svc, monkeypatch)
 
 def test_blank_key_keeps_existing(svc, monkeypatch):
     service, settings = svc
-    _stub_openai(monkeypatch)
+    _stub_ark(monkeypatch)
     service.update(UpdateSettingsRequest(ark_key="sk-first"))
     # 仅改 model、key 留空 → 用既有 key 通过测试，且不覆盖原 key
     service.update(UpdateSettingsRequest(ark_key="", ark_model="ep-2"))
