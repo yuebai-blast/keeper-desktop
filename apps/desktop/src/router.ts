@@ -5,6 +5,8 @@ import { createRouter, createWebHashHistory } from "vue-router";
 const routes = [
   { path: "/", name: "home", component: () => import("./pages/ProjectsHome.vue") },
   { path: "/new", name: "new", component: () => import("./pages/NewProject.vue") },
+  // 设置页（自用版：配置 Ark key / 模型 id）。商业版构建移除此路由
+  { path: "/settings", name: "settings", component: () => import("./pages/SettingsPage.vue") },
   {
     path: "/projects/:id",
     name: "groups",

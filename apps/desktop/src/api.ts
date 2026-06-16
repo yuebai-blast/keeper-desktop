@@ -97,6 +97,27 @@ export function reloadModels(): Promise<Health> {
   return post<Health>("/warmup/reload", {});
 }
 
+/** 大模型配置（自用版设置页）。**绝不含 key 明文**，只用 ark_key_set 标识是否已配置。 */
+export interface AppSettings {
+  ark_model: string; // Ark 模型 id
+  ark_base_url: string; // Ark 兼容接口基址
+  ark_concurrency: number; // 打分并发数
+  ark_key_set: boolean; // 是否已配置 key
+}
+
+/** 更新大模型配置（部分更新；字段缺省=不动。ark_key 留空=保持原 key 不变）。 */
+export interface SettingsUpdate {
+  ark_key?: string;
+  ark_model?: string;
+  ark_base_url?: string;
+}
+
+/** 读取当前大模型配置（不含 key 明文）。 */
+export const getSettings = () => get<AppSettings>("/settings");
+
+/** 保存大模型配置；返回更新后的快照。 */
+export const saveSettings = (body: SettingsUpdate) => post<AppSettings>("/settings", body);
+
 /** 一个「瞬间组」。 */
 export interface Group {
   id: string;

@@ -40,6 +40,8 @@ dependencies = [
     "sqlmodel>=0.0.22",
     # ── 集中配置（配置文件 + 环境变量加载）：pydantic 官方配套 ──
     "pydantic-settings>=2.5",
+    # ── 写回 config.toml（设置页持久化 ark 配置）；读用标准库 tomllib，写用 tomli-w ──
+    "tomli-w>=1.0",
 ]
 
 [dependency-groups]

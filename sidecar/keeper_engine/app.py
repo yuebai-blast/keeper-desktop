@@ -18,6 +18,7 @@ from .controller import (
     health_controller,
     project_controller,
     score_controller,
+    settings_controller,
     thumbnail_controller,
 )
 from .response.envelope import install_exception_handlers
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
         assess_controller,
         score_controller,
         project_controller,
+        settings_controller,  # 仅自用版：商业版构建移除
     ):
         app.include_router(module.router)
 

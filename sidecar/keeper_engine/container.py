@@ -31,6 +31,7 @@ from .service.project_service import ProjectService
 from .service.ranking_service import RankingService
 from .service.readiness_service import ReadinessService
 from .service.scoring_service import ScoringService
+from .service.settings_service import SettingsService
 from .service.workspace_service import WorkspaceService
 
 
@@ -64,6 +65,8 @@ class Container(containers.DeclarativeContainer):
     # ── 无状态领域服务 ──
     funnel_service = providers.Factory(FunnelService)
     params_service = providers.Factory(ParamsService)
+    # 设置页（自用版）：读写大模型配置。商业版构建移除此绑定与 settings_controller
+    settings_service = providers.Factory(SettingsService, settings=settings)
     ranking_service = providers.Factory(RankingService, funnel=funnel_service)
     workspace_service = providers.Factory(WorkspaceService)
 

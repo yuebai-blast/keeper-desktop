@@ -48,7 +48,10 @@ async function confirmDelete() {
         <h1>选片项目</h1>
         <p class="lede">每次选片是一个项目，进度随时保存——可随时退出、稍后继续。</p>
       </div>
-      <RouterLink to="/new" class="btn btn--primary lg">新建项目</RouterLink>
+      <div class="actions">
+        <RouterLink to="/settings" class="btn">设置</RouterLink>
+        <RouterLink to="/new" class="btn btn--primary lg">新建项目</RouterLink>
+      </div>
     </div>
 
     <p v-if="store.error" class="err">{{ store.error }}</p>
@@ -166,5 +169,5 @@ h1 { margin: 0 0 6px; font-family: var(--font-display); font-weight: 400; font-s
 .dialog h2 { margin: 0 0 12px; font-family: var(--font-display); font-weight: 400; font-size: 21px; }
 .warn { margin: 0 0 22px; color: var(--ink-dim); font-size: 13.5px; line-height: 1.7; }
 .warn strong { color: var(--red); font-weight: 600; }
-.actions { display: flex; justify-content: flex-end; gap: 10px; }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 </style>
