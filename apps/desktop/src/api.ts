@@ -115,7 +115,10 @@ export interface SettingsUpdate {
 /** 读取当前大模型配置（不含 key 明文）。 */
 export const getSettings = () => get<AppSettings>("/settings");
 
-/** 保存大模型配置；返回更新后的快照。 */
+/** 测试大模型连接（不落配置）；连不上抛 ApiError（SCORER_FAILED，msg 含详情）。 */
+export const testSettings = (body: SettingsUpdate) => post<AppSettings>("/settings/test", body);
+
+/** 保存大模型配置（后端先测后存）；返回更新后的快照。 */
 export const saveSettings = (body: SettingsUpdate) => post<AppSettings>("/settings", body);
 
 /** 一个「瞬间组」。 */

@@ -27,11 +27,21 @@ def get_settings(
     return svc.get()
 
 
+@router.post("/settings/test", response_model=SettingsView)
+@inject
+def test_settings(
+    req: UpdateSettingsRequest,
+    svc: SettingsService = Depends(Provide[Container.settings_service]),
+) -> SettingsView:
+    """用待保存的值实调一次大模型验证连通性；不落配置。失败→SCORER_FAILED（带详情）。"""
+    return svc.test_connection(req)
+
+
 @router.post("/settings", response_model=SettingsView)
 @inject
 def update_settings(
     req: UpdateSettingsRequest,
     svc: SettingsService = Depends(Provide[Container.settings_service]),
 ) -> SettingsView:
-    """更新大模型配置（部分更新）。key 写入 0600 文件，model/base_url 落 config.toml 并即时生效。"""
+    """更新大模型配置（部分更新）。先测连通性，能连上才存：key 写 0600 文件、model/base_url 落 config.toml 即时生效。"""
     return svc.update(req)

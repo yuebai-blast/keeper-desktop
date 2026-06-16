@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // 设置页（自用版）：配置 Ark 大模型 key / 模型 id / 接口基址。
+// 「能连上才给保存」：先测试连接（key+模型实调一次），成功后才允许保存；改任一字段需重测。
 // 自用版让用户填自己的 key 直连大模型；商业版构建移除此页（key 在云端中转，不下发客户端）。
-import { onMounted, ref } from "vue";
-import { getSettings, saveSettings } from "../api";
+import { nextTick, onMounted, ref, watch } from "vue";
+import { getSettings, saveSettings, testSettings } from "../api";
 
 const loading = ref(true);
+const testing = ref(false);
 const saving = ref(false);
+const tested = ref(false); // 当前字段值是否已通过连接测试（改字段即失效）
 const error = ref("");
 const saved = ref(false);
 
@@ -15,12 +18,24 @@ const keyAlreadySet = ref(false); // 后端是否已存在 key（决定占位文
 const arkModel = ref("");
 const arkBaseUrl = ref("");
 
+// 改动任一字段 → 作废上次测试结果与提示（须重新测试才能保存）
+let suppress = false; // 程序化回填字段时不触发作废
+watch([arkKey, arkModel, arkBaseUrl], () => {
+  if (suppress) return;
+  tested.value = false;
+  saved.value = false;
+  error.value = "";
+});
+
 onMounted(async () => {
   try {
     const s = await getSettings();
+    suppress = true;
     arkModel.value = s.ark_model;
     arkBaseUrl.value = s.ark_base_url;
     keyAlreadySet.value = s.ark_key_set;
+    await nextTick();
+    suppress = false;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -28,23 +43,47 @@ onMounted(async () => {
   }
 });
 
-async function save() {
-  if (saving.value) return;
-  saving.value = true;
+/** 当前表单值（key 留空则后端用已存 key）。 */
+function payload() {
+  return {
+    ark_key: arkKey.value.trim() || undefined,
+    ark_model: arkModel.value.trim(),
+    ark_base_url: arkBaseUrl.value.trim(),
+  };
+}
+
+async function testConn() {
+  if (testing.value) return;
+  testing.value = true;
   error.value = "";
   saved.value = false;
   try {
-    // ark_key 仅在用户输入了内容时提交，留空则保持原 key 不变
-    const s = await saveSettings({
-      ark_key: arkKey.value.trim() || undefined,
-      ark_model: arkModel.value.trim(),
-      ark_base_url: arkBaseUrl.value.trim(),
-    });
+    await testSettings(payload());
+    tested.value = true;
+  } catch (e) {
+    tested.value = false;
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    testing.value = false;
+  }
+}
+
+async function save() {
+  if (saving.value || !tested.value) return;
+  saving.value = true;
+  error.value = "";
+  try {
+    // 后端会再测一次（先测后存），测不通不落配置——双保险
+    const s = await saveSettings(payload());
+    suppress = true;
+    arkKey.value = ""; // 清空输入框，避免明文驻留
     arkModel.value = s.ark_model;
     arkBaseUrl.value = s.ark_base_url;
     keyAlreadySet.value = s.ark_key_set;
-    arkKey.value = ""; // 清空输入框，避免明文驻留
+    tested.value = false; // 已存盘，无新改动可存
     saved.value = true;
+    await nextTick();
+    suppress = false;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -93,11 +132,18 @@ async function save() {
       </label>
 
       <p v-if="error" class="err">{{ error }}</p>
-      <p v-if="saved" class="ok">已保存 ✓</p>
+      <p v-else-if="saved" class="ok">已保存 ✓</p>
+      <p v-else-if="tested" class="ok">连接成功，可以保存了 ✓</p>
+      <p v-else class="muted">改动后需先「测试连接」，连得上才能保存。</p>
 
-      <button class="btn btn--primary lg" :disabled="saving" @click="save">
-        {{ saving ? "正在保存…" : "保存" }}
-      </button>
+      <div class="btns">
+        <button class="btn" :disabled="testing || saving" @click="testConn">
+          {{ testing ? "测试中…" : "测试连接" }}
+        </button>
+        <button class="btn btn--primary lg" :disabled="!tested || saving" @click="save">
+          {{ saving ? "正在保存…" : "保存" }}
+        </button>
+      </div>
     </template>
   </section>
 </template>
@@ -121,8 +167,9 @@ input {
   padding: 11px 14px;
 }
 input:focus { outline: none; border-color: var(--amber); }
-.muted { color: var(--ink-faint); font-size: 13px; }
+.muted { color: var(--ink-faint); font-size: 13px; margin: 0; }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; margin: 0; }
 .ok { color: var(--amber-bright); font-size: 13px; margin: 0; }
-.btn.lg { padding: 12px 24px; font-size: 14.5px; width: fit-content; }
+.btns { display: flex; align-items: center; gap: 12px; }
+.btn.lg { padding: 12px 24px; font-size: 14.5px; }
 </style>
