@@ -163,7 +163,8 @@ function rescue(p: PhotoView) {
 .sect small { font-family: var(--font-mono); font-size: 13px; color: var(--ink-faint); margin-left: 6px; }
 .empty { color: var(--ink-faint); font-size: 13px; margin: 0; }
 
-.cards { display: flex; flex-direction: column; gap: 12px; }
+/* 响应式网格：通过/未通过照片随窗口宽度多列排布（每列 ≥520px，容纳 200px 缩略图 + 信息） */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 12px; }
 .pcard {
   display: flex;
   gap: 16px;

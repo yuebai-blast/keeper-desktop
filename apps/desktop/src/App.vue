@@ -66,9 +66,13 @@ onUnmounted(stopPoll);
 
 <style scoped>
 .shell {
-  max-width: 1040px;
+  /* 流式铺开：随窗口宽度自适应，2200px 安全上限仅为防极端高分屏过度拉伸
+     （标准 24/27/32 寸笔记本/显示器用不到此上限；带鱼屏不在适配范围）。
+     横向留白随窗口在 24~56px 间缩放。 */
+  width: 100%;
+  max-width: 2200px;
   margin: 0 auto;
-  padding: 0 28px 64px;
+  padding: 0 clamp(24px, 3.5vw, 56px) 80px;
 }
 .topbar {
   position: sticky;

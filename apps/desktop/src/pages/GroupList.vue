@@ -91,7 +91,8 @@ async function submit() {
 .muted { color: var(--ink-faint); font-size: 13px; }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; }
 
-.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+/* 响应式网格：窗口越宽排越多列（每列 ≥420px），全屏时用满空间 */
+.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
