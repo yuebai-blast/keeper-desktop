@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     ark_model: str = ""
     ark_concurrency: int = 4
+    # 火山「管理面 OpenAPI」地域：仅用于 AK/SK 调 ListFoundationModels 拉取可选模型列表（自用版便利功能）；
+    # 与推理用的 ARK_API_KEY 是两套鉴权。当前火山方舟管理面仅 cn-beijing。
+    volc_region: str = "cn-beijing"
 
     # 选片项目最终输出根目录（固定前缀，输出到 {output_root}/{项目名}）；不在 home 下，单独可配
     output_root: Path = Path.home() / "Pictures" / "Keeper"
@@ -80,6 +83,17 @@ class Settings(BaseSettings):
     @property
     def ark_key_file(self) -> Path:
         return self.home / "ark_key"
+
+    # 火山管理面 AK/SK：与 ark_key 同款——各一个文件、0600、绝不入库（机密隔离爆炸半径，见设计讨论）。
+    @computed_field
+    @property
+    def volc_ak_file(self) -> Path:
+        return self.home / "volc_ak"
+
+    @computed_field
+    @property
+    def volc_sk_file(self) -> Path:
+        return self.home / "volc_sk"
 
     @classmethod
     def settings_customise_sources(

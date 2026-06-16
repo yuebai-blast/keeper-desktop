@@ -7,6 +7,8 @@
   - key：写 ~/.keeper/ark_key（0600）。scorer 每次调用现读该文件 → 写完立即生效，**绝不入库**。
   - model / base_url：① 更新内存 Settings 单例（项目工作流打分用 settings.ark_model，立即生效）
     ② 落回 ~/.keeper/config.toml（重启后仍保留）。
+  - 火山 AK/SK（仅用于「拉取视觉模型」便利功能，非打分链路）：各写一个 0600 文件、**绝不入库**，
+    拉取成功后落盘复用。env（VOLCENGINE_ACCESS_KEY/SECRET_KEY）优先于文件。
 """
 
 from __future__ import annotations
@@ -18,27 +20,45 @@ from pathlib import Path
 import tomli_w
 from volcenginesdkarkruntime import Ark
 
+from ..client.foundation_model_client import FoundationModelClient
 from ..config.settings import Settings
 from ..enumeration.biz_code import BizCode
 from ..exception.errors import BizException
-from ..request.settings_request import UpdateSettingsRequest
-from ..response.settings_response import SettingsView
+from ..request.settings_request import ListVisionModelsRequest, UpdateSettingsRequest
+from ..response.settings_response import SettingsView, VisionModelsView
 
 
 class SettingsService:
-    """大模型配置的读写编排（注入 Settings 单例）。"""
+    """大模型配置的读写编排（注入 Settings 单例 + 管理面模型客户端）。"""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, foundation_models: FoundationModelClient) -> None:
         self._settings = settings
+        self._foundation_models = foundation_models
 
     def get(self) -> SettingsView:
-        """当前配置快照（不含 key 明文，只报告是否已配置）。"""
+        """当前配置快照（不含 key / AK / SK 明文，只报告是否已配置）。"""
         return SettingsView(
             ark_model=self._settings.ark_model,
             ark_base_url=self._settings.ark_base_url,
             ark_concurrency=self._settings.ark_concurrency,
             ark_key_set=self._key_present(),
+            volc_credentials_set=self._volc_creds_present(),
         )
+
+    def list_vision_models(self, req: ListVisionModelsRequest) -> VisionModelsView:
+        """用 AK/SK 调火山管理面拉取支持图片理解的模型；成功后把 AK/SK 落盘复用。
+
+        AK/SK 留空则用已存的（env / 文件）。缺凭据或管理面失败 → FOUNDATION_MODELS_FAILED（带详情）。
+        """
+        ak, sk = self._effective_volc_creds(req)
+        try:
+            models = self._foundation_models.list_vision_models(ak, sk)
+        except Exception as e:  # noqa: BLE001 —— 任何失败翻成可读的业务错误回前端
+            raise BizException(BizCode.FOUNDATION_MODELS_FAILED, f"拉取失败：{e}") from e
+        # 能连上才落盘（与「能连上才存 key」一致的先验后存思路）
+        if req.volc_ak and req.volc_ak.strip() and req.volc_sk and req.volc_sk.strip():
+            self._write_volc_creds(req.volc_ak.strip(), req.volc_sk.strip())
+        return VisionModelsView(items=models)
 
     def test_connection(self, req: UpdateSettingsRequest) -> SettingsView:
         """用「待保存的有效值」实调一次极简对话，验证 key+模型+基址能连上。
@@ -116,6 +136,36 @@ class SettingsService:
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(key, encoding="utf-8")
         os.chmod(f, 0o600)
+
+    # ── 火山 AK/SK（管理面，拉取视觉模型用）：env 优先，其次各自的 0600 文件 ──────────
+    def _existing_volc_creds(self) -> tuple[str, str]:
+        """已配置的 AK/SK（env 优先，其次文件）；缺任一返回空串。"""
+        ak = os.environ.get("VOLCENGINE_ACCESS_KEY", "").strip()
+        sk = os.environ.get("VOLCENGINE_SECRET_KEY", "").strip()
+        if not ak and self._settings.volc_ak_file.exists():
+            ak = self._settings.volc_ak_file.read_text(encoding="utf-8").strip()
+        if not sk and self._settings.volc_sk_file.exists():
+            sk = self._settings.volc_sk_file.read_text(encoding="utf-8").strip()
+        return ak, sk
+
+    def _volc_creds_present(self) -> bool:
+        ak, sk = self._existing_volc_creds()
+        return bool(ak and sk)
+
+    def _effective_volc_creds(self, req: ListVisionModelsRequest) -> tuple[str, str]:
+        """解析待用 AK/SK：请求留空则回退已存的。缺任一直接抛 FOUNDATION_MODELS_FAILED。"""
+        existing_ak, existing_sk = self._existing_volc_creds()
+        ak = (req.volc_ak or "").strip() or existing_ak
+        sk = (req.volc_sk or "").strip() or existing_sk
+        if not ak or not sk:
+            raise BizException(BizCode.FOUNDATION_MODELS_FAILED, "未配置火山 AK/SK")
+        return ak, sk
+
+    def _write_volc_creds(self, ak: str, sk: str) -> None:
+        for f, val in ((self._settings.volc_ak_file, ak), (self._settings.volc_sk_file, sk)):
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(val, encoding="utf-8")
+            os.chmod(f, 0o600)
 
     def _config_file(self) -> Path:
         # 与 settings 的数据根一致（默认 ~/.keeper/config.toml）；便于测试隔离到临时 home

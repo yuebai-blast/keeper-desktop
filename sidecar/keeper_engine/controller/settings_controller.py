@@ -10,9 +10,9 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends
 
 from ..container import Container
-from ..request.settings_request import UpdateSettingsRequest
+from ..request.settings_request import ListVisionModelsRequest, UpdateSettingsRequest
 from ..response.envelope import EnvelopeRoute
-from ..response.settings_response import SettingsView
+from ..response.settings_response import SettingsView, VisionModelsView
 from ..service.settings_service import SettingsService
 
 router = APIRouter(route_class=EnvelopeRoute)
@@ -45,3 +45,13 @@ def update_settings(
 ) -> SettingsView:
     """更新大模型配置（部分更新）。先测连通性，能连上才存：key 写 0600 文件、model/base_url 落 config.toml 即时生效。"""
     return svc.update(req)
+
+
+@router.post("/settings/models", response_model=VisionModelsView)
+@inject
+def list_vision_models(
+    req: ListVisionModelsRequest,
+    svc: SettingsService = Depends(Provide[Container.settings_service]),
+) -> VisionModelsView:
+    """用火山 AK/SK 拉取支持图片理解的模型列表（辅助选 model id）。AK/SK 可留空用已存的；成功后落盘复用。"""
+    return svc.list_vision_models(req)

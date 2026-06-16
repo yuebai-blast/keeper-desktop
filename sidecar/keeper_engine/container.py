@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dependency_injector import containers, providers
 
+from .client.foundation_model_client import FoundationModelClient
 from .client.geocode_client import GeocodeClient
 from .client.scorer import LocalDirectScorer
 from .client.vision_client import VisionClient
@@ -45,6 +46,8 @@ class Container(containers.DeclarativeContainer):
     # ── 外部依赖客户端（有状态/有外部连接，单例）──
     vision_client = providers.Singleton(VisionClient, settings=settings)
     scorer = providers.Singleton(LocalDirectScorer, settings=settings)  # ← 切 CloudRelayScorer 只改这行
+    # 管理面客户端：仅设置页「拉取视觉模型」用（AK/SK 调 ListFoundationModels），不参与打分链路
+    foundation_model_client = providers.Singleton(FoundationModelClient, settings=settings)
 
     # ── 数据访问（sqlite，统一共享 engine）──
     database = providers.Singleton(Database, settings=settings)
@@ -66,7 +69,9 @@ class Container(containers.DeclarativeContainer):
     funnel_service = providers.Factory(FunnelService)
     params_service = providers.Factory(ParamsService)
     # 设置页（自用版）：读写大模型配置。商业版构建移除此绑定与 settings_controller
-    settings_service = providers.Factory(SettingsService, settings=settings)
+    settings_service = providers.Factory(
+        SettingsService, settings=settings, foundation_models=foundation_model_client
+    )
     ranking_service = providers.Factory(RankingService, funnel=funnel_service)
     workspace_service = providers.Factory(WorkspaceService)
 

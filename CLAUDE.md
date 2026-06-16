@@ -123,13 +123,15 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | 变量 | 作用 |
 | :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
-| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key` |
+| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key`、`volc_ak`/`volc_sk`（管理面 AK/SK，0600） |
 | `KEEPER_OUTPUT_ROOT` | 选片完成输出根（默认 `~/Pictures/Keeper`），最终输出到 `{此}/{项目名}` |
 | `KEEPER_GEOCODE_ENABLED` / `KEEPER_GEOCODE_URL` | 拍摄地反查开关 / 服务地址（默认 OSM Nominatim，只发坐标） |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
 | `KEEPER_DINO_MODEL` / `KEEPER_FACE_PACK` | 切分组/人脸模型（默认 `facebook/dinov2-small` / `buffalo_l`） |
-| `ARK_API_KEY` | 大模型 key；也可写入 `~/.keeper/ark_key`（0600），绝不入库 |
+| `ARK_API_KEY` | 大模型 key（推理面）；也可写入 `~/.keeper/ark_key`（0600），绝不入库 |
 | `KEEPER_ARK_MODEL` / `KEEPER_ARK_BASE_URL` / `KEEPER_ARK_CONCURRENCY` | Ark 模型 id / 基址 / 并发数 |
+| `VOLCENGINE_ACCESS_KEY` / `VOLCENGINE_SECRET_KEY` | 火山「管理面」AK/SK，**仅**用于设置页「拉取视觉模型」（`POST /settings/models` 调 `ListFoundationModels`），与打分无关；也可写入 `~/.keeper/volc_ak`·`volc_sk`（0600），绝不入库 |
+| `KEEPER_VOLC_REGION` | 管理面地域（默认 `cn-beijing`，火山方舟管理面当前仅此地域） |
 
 ## 关键约定
 
@@ -137,7 +139,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - **工具链钉死**：`[tools]` 里所有版本必须是具体版本号，禁止 `latest`，保证可复现。新增工具/命令一律沉淀到 `mise.toml`，不散落到零散脚本。
 - **OpenCV 三包冲突**：`sidecar/pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回依赖。
 - **不静默降级**：本地推理依赖缺失或模型加载失败立刻抛异常，不悄悄退化。
-- **API key 本地管理**：大模型 key 存在 `~/.keeper/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。
+- **API key 本地管理**：大模型 key 存在 `~/.keeper/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。火山管理面 AK/SK 同款处理（各一个 0600 文件、env 可覆盖、绝不入库）——机密一律隔离存文件，不进 sqlite（避免随 DB 备份/分享外泄）。
 - **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务，以及拍摄地反查只发 GPS 坐标。复制副本/归档/删除只动 `~/.keeper/workspace` 与输出目录，绝不写用户源文件夹。
 - **中文书写**：CLAUDE.md、README、`docs/`、代码注释、Git 提交信息一律用简体中文；代码标识符/API 名保持英文。
 

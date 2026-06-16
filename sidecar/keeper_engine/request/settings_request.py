@@ -16,3 +16,14 @@ class UpdateSettingsRequest(BaseModel):
     ark_key: str | None = Field(default=None, description="Ark API key 明文；写入 ~/.keeper/ark_key（0600）。空/缺省=不改")
     ark_model: str | None = Field(default=None, description="Ark 模型 id（接入点/模型名）")
     ark_base_url: str | None = Field(default=None, description="Ark 兼容接口基址")
+
+
+class ListVisionModelsRequest(BaseModel):
+    """拉取「支持图片理解」的模型列表（自用版便利功能）。
+
+    AK/SK 为火山「管理面」凭据，与打分用的 ARK_API_KEY 是两套：仅用于查模型列表，全程可选。
+    留空则用已存的 AK/SK（env 或 ~/.keeper 文件）；拉取成功后会把本次传入的 AK/SK 落盘复用。
+    """
+
+    volc_ak: str | None = Field(default=None, description="火山 Access Key；空/缺省=用已存的")
+    volc_sk: str | None = Field(default=None, description="火山 Secret Key；空/缺省=用已存的")

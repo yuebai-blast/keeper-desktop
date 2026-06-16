@@ -8,11 +8,22 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from ..vo.vision_model import VisionModel
+
 
 class SettingsView(BaseModel):
-    """当前大模型配置（不含 key 明文）。"""
+    """当前大模型配置（不含 key / AK / SK 明文）。"""
 
     ark_model: str = Field(description="Ark 模型 id")
     ark_base_url: str = Field(description="Ark 兼容接口基址")
     ark_concurrency: int = Field(description="打分并发数")
     ark_key_set: bool = Field(description="是否已配置 Ark key（环境变量或 key 文件）")
+    volc_credentials_set: bool = Field(
+        default=False, description="是否已配置火山 AK/SK（用于拉取视觉模型；环境变量或文件）"
+    )
+
+
+class VisionModelsView(BaseModel):
+    """拉取到的视觉模型列表（供设置页下拉选择）。"""
+
+    items: list[VisionModel] = Field(default_factory=list, description="支持图片理解的模型")

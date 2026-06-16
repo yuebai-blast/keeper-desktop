@@ -97,12 +97,13 @@ export function reloadModels(): Promise<Health> {
   return post<Health>("/warmup/reload", {});
 }
 
-/** 大模型配置（自用版设置页）。**绝不含 key 明文**，只用 ark_key_set 标识是否已配置。 */
+/** 大模型配置（自用版设置页）。**绝不含 key/AK/SK 明文**，只用布尔位标识是否已配置。 */
 export interface AppSettings {
   ark_model: string; // Ark 模型 id
   ark_base_url: string; // Ark 兼容接口基址
   ark_concurrency: number; // 打分并发数
   ark_key_set: boolean; // 是否已配置 key
+  volc_credentials_set: boolean; // 是否已配置火山 AK/SK（用于拉取视觉模型）
 }
 
 /** 更新大模型配置（部分更新；字段缺省=不动。ark_key 留空=保持原 key 不变）。 */
@@ -110,6 +111,20 @@ export interface SettingsUpdate {
   ark_key?: string;
   ark_model?: string;
   ark_base_url?: string;
+}
+
+/** 拉取到的视觉模型（支持图片理解）。 */
+export interface VisionModel {
+  model_id: string; // 推理用 model id（模型名-主版本）
+  name: string; // 基础模型名称
+  version: string; // 主版本号
+  display_name: string; // 展示名
+}
+
+/** 拉取视觉模型请求；AK/SK 留空=用已存的（env/文件）。 */
+export interface ListVisionModelsBody {
+  volc_ak?: string;
+  volc_sk?: string;
 }
 
 /** 读取当前大模型配置（不含 key 明文）。 */
@@ -120,6 +135,10 @@ export const testSettings = (body: SettingsUpdate) => post<AppSettings>("/settin
 
 /** 保存大模型配置（后端先测后存）；返回更新后的快照。 */
 export const saveSettings = (body: SettingsUpdate) => post<AppSettings>("/settings", body);
+
+/** 用火山 AK/SK 拉取支持图片理解的模型列表（辅助选 model id）；成功后 AK/SK 会落盘复用。 */
+export const listVisionModels = (body: ListVisionModelsBody) =>
+  post<{ items: VisionModel[] }>("/settings/models", body);
 
 /** 一个「瞬间组」。 */
 export interface Group {

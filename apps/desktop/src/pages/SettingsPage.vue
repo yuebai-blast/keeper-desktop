@@ -3,7 +3,7 @@
 // 「能连上才给保存」：先测试连接（key+模型实调一次），成功后才允许保存；改任一字段需重测。
 // 自用版让用户填自己的 key 直连大模型；商业版构建移除此页（key 在云端中转，不下发客户端）。
 import { nextTick, onMounted, ref, watch } from "vue";
-import { getSettings, saveSettings, testSettings } from "../api";
+import { getSettings, listVisionModels, saveSettings, testSettings, type VisionModel } from "../api";
 
 const loading = ref(true);
 const testing = ref(false);
@@ -17,6 +17,16 @@ const arkKey = ref(""); // 留空=不改既有 key
 const keyAlreadySet = ref(false); // 后端是否已存在 key（决定占位文案）
 const arkModel = ref("");
 const arkBaseUrl = ref("");
+
+// 「拉取视觉模型」辅助（可选）：用火山 AK/SK 调管理面列出支持图片理解的模型，下拉回填 model id。
+// AK/SK 与打分用的 key 是两套；全程可选，手填 model id 永远兜底。
+const volcAk = ref(""); // 留空=用已存的
+const volcSk = ref("");
+const volcCredsSet = ref(false); // 后端是否已存在 AK/SK
+const fetching = ref(false);
+const fetchError = ref("");
+const models = ref<VisionModel[]>([]);
+const pickedModel = ref(""); // 下拉当前选中的 model_id
 
 // 改动任一字段 → 作废上次测试结果与提示（须重新测试才能保存）
 let suppress = false; // 程序化回填字段时不触发作废
@@ -34,6 +44,7 @@ onMounted(async () => {
     arkModel.value = s.ark_model;
     arkBaseUrl.value = s.ark_base_url;
     keyAlreadySet.value = s.ark_key_set;
+    volcCredsSet.value = s.volc_credentials_set;
     await nextTick();
     suppress = false;
   } catch (e) {
@@ -42,6 +53,32 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+/** 拉取支持图片理解的模型；成功后 AK/SK 落盘复用，清空输入框避免明文驻留。 */
+async function fetchModels() {
+  if (fetching.value) return;
+  fetching.value = true;
+  fetchError.value = "";
+  try {
+    const { items } = await listVisionModels({
+      volc_ak: volcAk.value.trim() || undefined,
+      volc_sk: volcSk.value.trim() || undefined,
+    });
+    models.value = items;
+    volcCredsSet.value = true;
+    volcAk.value = "";
+    volcSk.value = "";
+  } catch (e) {
+    fetchError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    fetching.value = false;
+  }
+}
+
+/** 选中下拉里的模型 → 回填到 model id 输入框（改 model 会作废上次连接测试，符合预期）。 */
+function pickModel() {
+  if (pickedModel.value) arkModel.value = pickedModel.value;
+}
 
 /** 当前表单值（key 留空则后端用已存 key）。 */
 function payload() {
@@ -122,8 +159,49 @@ async function save() {
           placeholder="例如：ep-xxxxxxxx 或具体模型名"
           :disabled="saving"
         />
-        <small>火山方舟「接入点」id 或模型名，用于层②照片打分。</small>
+        <small>火山方舟「接入点」id 或模型名，用于层②照片打分。可手填，或用下方「拉取视觉模型」辅助选。</small>
       </label>
+
+      <details class="helper">
+        <summary>不知道填哪个模型？用火山 AK/SK 拉取支持图片理解的模型（可选）</summary>
+        <div class="helper__body">
+          <p class="muted">
+            AK/SK 是火山「管理面」凭据，仅用于列出模型、<strong>不参与打分</strong>（打分只用上面的 Key）。
+            仅存本机 ~/.keeper（0600）、绝不入库。已配置可留空直接拉取。
+          </p>
+          <div class="creds">
+            <input
+              v-model="volcAk"
+              type="password"
+              autocomplete="off"
+              :placeholder="volcCredsSet ? 'Access Key（已配置，留空沿用）' : 'Access Key'"
+              :disabled="fetching"
+            />
+            <input
+              v-model="volcSk"
+              type="password"
+              autocomplete="off"
+              :placeholder="volcCredsSet ? 'Secret Key（已配置，留空沿用）' : 'Secret Key'"
+              :disabled="fetching"
+            />
+            <button class="btn" :disabled="fetching" @click="fetchModels">
+              {{ fetching ? "拉取中…" : "拉取视觉模型" }}
+            </button>
+          </div>
+
+          <label v-if="models.length" class="field">
+            <span>选择视觉模型（{{ models.length }} 个）</span>
+            <select v-model="pickedModel" @change="pickModel" :disabled="saving">
+              <option value="" disabled>▼ 选一个回填到上面的「模型 id」</option>
+              <option v-for="m in models" :key="m.model_id" :value="m.model_id">
+                {{ m.display_name }} —— {{ m.model_id }}
+              </option>
+            </select>
+          </label>
+
+          <p v-if="fetchError" class="err">{{ fetchError }}</p>
+        </div>
+      </details>
 
       <label class="field">
         <span>接口基址</span>
@@ -167,6 +245,28 @@ input {
   padding: 11px 14px;
 }
 input:focus { outline: none; border-color: var(--amber); }
+select {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+}
+select:focus { outline: none; border-color: var(--amber); }
+.helper {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.helper > summary { font-size: 13px; color: var(--ink-dim); cursor: pointer; }
+.helper > summary:hover { color: var(--amber-bright); }
+.helper__body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.helper__body .muted { font-size: 12px; line-height: 1.6; }
+.creds { display: flex; gap: 10px; flex-wrap: wrap; }
+.creds input { flex: 1 1 180px; }
 .muted { color: var(--ink-faint); font-size: 13px; margin: 0; }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; margin: 0; }
 .ok { color: var(--amber-bright); font-size: 13px; margin: 0; }
