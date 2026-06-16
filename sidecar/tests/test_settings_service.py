@@ -172,3 +172,19 @@ def test_list_vision_models_uses_stored_creds_when_blank(svc):
     service.list_vision_models(ListVisionModelsRequest())
     assert fm.calls[-1] == ("stored-ak", "stored-sk")
     assert service.get().volc_credentials_set is True
+
+
+# ── Windows 兼容：机密文件写盘跳过 POSIX chmod ──────────────────────────────
+def test_secret_write_skips_chmod_on_windows(svc, monkeypatch):
+    """Windows 上 POSIX 0600 无意义：不应调用 os.chmod（避免无效/异常），仍正常写文件。"""
+    import sys
+    from unittest.mock import patch
+
+    service, settings, _ = svc
+    _stub_ark(monkeypatch)  # 桩掉 update 里的连接测试，避免打真网络
+
+    with patch.object(sys, "platform", "win32"), patch("os.chmod") as chmod:
+        service.update(UpdateSettingsRequest(ark_key="sk-test-123"))  # 写 ark key → _write_key
+        chmod.assert_not_called()
+
+    assert settings.ark_key_file.read_text(encoding="utf-8").strip() == "sk-test-123"

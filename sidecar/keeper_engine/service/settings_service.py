@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 
@@ -135,7 +136,9 @@ class SettingsService:
         f = self._settings.ark_key_file
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(key, encoding="utf-8")
-        os.chmod(f, 0o600)
+        # POSIX 限定权限；Windows 无等价 0600 语义（机密保护依赖用户目录 ACL），跳过避免无效调用。
+        if sys.platform != "win32":
+            os.chmod(f, 0o600)
 
     # ── 火山 AK/SK（管理面，拉取视觉模型用）：env 优先，其次各自的 0600 文件 ──────────
     def _existing_volc_creds(self) -> tuple[str, str]:
@@ -165,7 +168,9 @@ class SettingsService:
         for f, val in ((self._settings.volc_ak_file, ak), (self._settings.volc_sk_file, sk)):
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text(val, encoding="utf-8")
-            os.chmod(f, 0o600)
+            # POSIX 限定权限；Windows 无等价 0600 语义（机密保护依赖用户目录 ACL），跳过避免无效调用。
+            if sys.platform != "win32":
+                os.chmod(f, 0o600)
 
     def _config_file(self) -> Path:
         # 与 settings 的数据根一致（默认 ~/.keeper/config.toml）；便于测试隔离到临时 home

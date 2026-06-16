@@ -27,8 +27,10 @@ dependencies = [
     "transformers>=4.40",
     # ── 人脸检测 + ArcFace 嵌入（InsightFace）──
     "insightface>=0.7",
-    "onnxruntime>=1.16 ; sys_platform != 'win32'",
-    "onnxruntime-gpu[cuda,cudnn]>=1.16 ; sys_platform == 'win32'",
+    # onnxruntime：全平台默认 CPU 版（与 KEEPER_DEVICE 默认 CPU 一致）。
+    # 需要 GPU 的用户自行安装 onnxruntime-gpu 并设 KEEPER_DEVICE=cuda；不在依赖里绑死 CUDA，
+    # 否则无 NVIDIA 卡的 Windows 机器会装不上/跑不起。
+    "onnxruntime>=1.16",
     # ── 互补美学 / 质量评分（MUSIQ + CLIP-IQA+）──
     "pyiqa>=0.1.10",
     "timm>=0.9",
