@@ -42,6 +42,7 @@ dependencies = [
     "pydantic-settings>=2.5",
     # ── 写回 config.toml（设置页持久化 ark 配置）；读用标准库 tomllib，写用 tomli-w ──
     "tomli-w>=1.0",
+    "volcengine-python-sdk[ark]>=5.0.34",
 ]
 
 [dependency-groups]
