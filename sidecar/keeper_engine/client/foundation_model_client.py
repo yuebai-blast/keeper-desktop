@@ -21,6 +21,8 @@ _VERSION = "2024-01-01"
 _ACTION = "ListFoundationModels"
 # TaskTypes 取值「图片内容理解」= 我们层②看图打分所需能力（见火山 ListFoundationModels 文档）
 _TASK_VQA = "VisualQuestionAnswering"
+# 只要公开模型；排除自建的 Private 微调模型（AccessType: Public / Private）
+_ACCESS_PUBLIC = "Public"
 
 
 class FoundationModelClient:
@@ -43,7 +45,10 @@ class FoundationModelClient:
         body = {
             "PageNumber": 1,
             "PageSize": 100,
-            "Filter": {"FoundationModelTag": {"TaskTypes": [_TASK_VQA]}},
+            "Filter": {
+                "FoundationModelTag": {"TaskTypes": [_TASK_VQA]},
+                "AccessTypes": [_ACCESS_PUBLIC],  # 只要公开模型
+            },
             "SortOrder": "Desc",
             "SortBy": "UpdateTime",
         }
@@ -52,16 +57,24 @@ class FoundationModelClient:
 
     @staticmethod
     def _parse(resp: dict) -> list[VisionModel]:
-        """从 {Result:{Items:[...]}} 抽出模型项；只保留确含 VQA 能力的，组装可调用 model id。"""
-        items = ((resp or {}).get("Result") or {}).get("Items") or []
+        """抽出模型项；只保留确含 VQA 能力的，组装可调用 model id。
+
+        do_call 已把 Result 拆包，列表数据直接在顶层（TotalCount/Items）；个别版本仍可能带
+        Result 包裹，故 `resp["Result"] 优先、否则用 resp 本身`，两种形态都吃得下。
+        """
+        payload = (resp or {}).get("Result") or resp or {}
+        items = payload.get("Items") or []
         models: list[VisionModel] = []
         for it in items:
             name = it.get("Name") or ""
             if not name:
                 continue
             tags = it.get("FoundationModelTag") or {}
+            # 二次校验：服务端筛过仍兜一道——确实支持看图、且为公开模型
             if _TASK_VQA not in (tags.get("TaskTypes") or []):
-                continue  # 二次校验：服务端筛过仍兜一道，确保确实支持看图
+                continue
+            if it.get("AccessType") != _ACCESS_PUBLIC:
+                continue
             version = it.get("PrimaryVersion") or ""
             # 推理时按「模型名-主版本」调用（如 doubao-seed-1-6-250615）；用户在前端可再手改兜底
             model_id = f"{name}-{version}" if version else name
