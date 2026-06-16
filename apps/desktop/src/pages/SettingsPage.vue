@@ -2,8 +2,13 @@
 // 设置页（自用版）：配置 Ark 大模型 key / 模型 id / 接口基址。
 // 「能连上才给保存」：先测试连接（key+模型实调一次），成功后才允许保存；改任一字段需重测。
 // 自用版让用户填自己的 key 直连大模型；商业版构建移除此页（key 在云端中转，不下发客户端）。
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { nextTick, onMounted, ref, watch } from "vue";
 import { getSettings, listVisionModels, saveSettings, testSettings, type VisionModel } from "../api";
+
+// 控制台指引链接（用系统浏览器打开）
+const ARK_APIKEY_URL = "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey";
+const VOLC_AKSK_URL = "https://console.volcengine.com/iam/keymanage";
 
 const loading = ref(true);
 const testing = ref(false);
@@ -134,7 +139,7 @@ async function save() {
     <RouterLink to="/" class="back">← 返回</RouterLink>
     <h1>设置</h1>
 
-    <p class="lede">配置在线大模型（火山 Ark，OpenAI 兼容协议）打分所需的凭据与模型。</p>
+    <p class="lede">填入火山方舟大模型的 API Key 和模型，用于给照片智能打分。</p>
 
     <div v-if="loading" class="muted">正在加载…</div>
 
@@ -148,7 +153,10 @@ async function save() {
           :placeholder="keyAlreadySet ? '已配置 —— 留空则保持不变' : '粘贴你的 Ark API Key'"
           :disabled="saving"
         />
-        <small>仅保存在本机 ~/.keeper/ark_key（0600 权限），绝不入库、绝不上传。</small>
+        <small>
+          只存在你这台电脑上，不上传、不外泄。
+          <a class="link" @click="openUrl(ARK_APIKEY_URL)">→ 去火山控制台获取 API Key</a>
+        </small>
       </label>
 
       <label class="field">
@@ -166,8 +174,8 @@ async function save() {
         <summary>不知道填哪个模型？用火山 AK/SK 拉取支持图片理解的模型（可选）</summary>
         <div class="helper__body">
           <p class="muted">
-            AK/SK 是火山「管理面」凭据，仅用于列出模型、<strong>不参与打分</strong>（打分只用上面的 Key）。
-            仅存本机 ~/.keeper（0600）、绝不入库。已配置可留空直接拉取。
+            AK/SK 只用来列出可选模型，<strong>不参与打分</strong>。和上面的 Key 一样只存在你这台电脑上、不外泄。已填过可留空直接拉取。
+            <a class="link" @click="openUrl(VOLC_AKSK_URL)">→ 去火山控制台获取 AK/SK</a>
           </p>
           <div class="creds">
             <input
@@ -261,6 +269,8 @@ select:focus { outline: none; border-color: var(--amber); }
   padding: 12px 14px;
   background: var(--surface);
 }
+.link { color: var(--amber); cursor: pointer; white-space: nowrap; }
+.link:hover { color: var(--amber-bright); text-decoration: underline; }
 .helper > summary { font-size: 13px; color: var(--ink-dim); cursor: pointer; }
 .helper > summary:hover { color: var(--amber-bright); }
 .helper__body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
