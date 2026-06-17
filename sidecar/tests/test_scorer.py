@@ -85,3 +85,4 @@ def test_parse_edit_advice_truncated_to_40():
 def test_layer2_prompt_loads_from_file():
     p = _layer2_prompt()
     assert "0–100" in p and "骨架" in p and "flaws" in p  # 提示词文件读得到、含关键结构
+    assert "editable" in p and "edit_advice" in p  # 含新增修图判定字段
