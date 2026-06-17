@@ -1,5 +1,7 @@
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
 
 /// 弹出目录选择器，返回用户选中的文件夹绝对路径（取消则 None）。
 ///
@@ -34,6 +36,26 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            // 仅打包运行时自动拉起内置 sidecar；dev 下用 `mise run sidecar`，不重复起。
+            if !cfg!(debug_assertions) {
+                let sidecar = app
+                    .shell()
+                    .sidecar("keeper-sidecar")
+                    .expect("缺少 keeper-sidecar 可执行")
+                    .args(["--port", "8761"]);
+                let (mut rx, _child) = sidecar.spawn().expect("无法启动 keeper-sidecar");
+                tauri::async_runtime::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        if let CommandEvent::Stderr(line) | CommandEvent::Stdout(line) = event {
+                            eprintln!("[sidecar] {}", String::from_utf8_lossy(&line));
+                        }
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![pick_folder, open_path, exit_app])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

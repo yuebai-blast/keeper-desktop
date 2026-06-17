@@ -51,3 +51,14 @@ run = "uv run python devtools/localscore.py"
 description = "用 PyInstaller 把 sidecar 冻结成单文件可执行（产物 sidecar/dist/keeper-sidecar）"
 dir = "sidecar"
 run = "uv run pyinstaller keeper-sidecar.spec --noconfirm --clean"
+
+[tasks.stage-sidecar]
+description = "把 PyInstaller 单文件产物按 Rust target triple 命名放到 Tauri binaries/ 目录"
+dir = "."
+run = """
+TRIPLE=$(rustc -vV | sed -n 's/host: //p' | tr -d '\\n')
+mkdir -p apps/desktop/src-tauri/binaries
+EXT=""
+if [ "$OS" = "Windows_NT" ]; then EXT=".exe"; fi
+cp "sidecar/dist/keeper-sidecar$EXT" "apps/desktop/src-tauri/binaries/keeper-sidecar-$TRIPLE$EXT"
+"""

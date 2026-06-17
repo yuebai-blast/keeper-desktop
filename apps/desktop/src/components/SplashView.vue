@@ -89,8 +89,8 @@ onUnmounted(() => window.clearTimeout(enterTimer));
 
         <!-- 服务未启动 -->
         <div v-else-if="view === 'offline'" key="offline" class="stage">
-          <p class="line warn">推理服务尚未启动</p>
-          <p class="hint">请先在终端运行 <code>mise run sidecar</code> 启动本地推理服务</p>
+          <p class="line warn">本地推理服务尚未就绪</p>
+          <p class="hint">正在启动内置推理服务，请稍候；若长时间无响应，请重启应用。<br />（开发模式下请在终端运行 <code>mise run sidecar</code>）</p>
           <button class="btn" @click="engine.refresh()">重新连接</button>
         </div>
 

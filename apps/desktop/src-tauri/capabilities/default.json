@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "binaries/keeper-sidecar", "sidecar": true, "args": ["--port", "8761"] }]
+    }
   ]
 }

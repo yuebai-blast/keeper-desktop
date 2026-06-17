@@ -17,6 +17,8 @@ dist/
 # ── Tauri / Rust ──
 target/
 apps/desktop/src-tauri/target/
+# Tauri sidecar 构建期产物（按 target triple 命名的副本，体积大，不入库）
+apps/desktop/src-tauri/binaries/
 
 # ── 模型权重缓存（体积大，不入库；首次运行自动下载）──
 .cache/
