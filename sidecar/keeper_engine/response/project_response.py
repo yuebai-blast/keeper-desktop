@@ -73,6 +73,8 @@ class PhotoView(BaseModel):
     llm_score: float | None = None
     llm_reason: str = ""
     llm_flaws: str = ""
+    llm_editable: str = ""
+    llm_edit_advice: str = ""
     origin: str | None = None
     selection: str | None = None
     rescued: bool = False

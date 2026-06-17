@@ -74,6 +74,14 @@ class ProjectPhoto(SQLModel, table=True):
         default="",
         sa_column_kwargs={"comment": "层② 大模型指出的缺陷"},
     )
+    llm_editable: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "层② 修图判定：ready/worth_editing/not_worth/unfixable（未评测为空）"},
+    )
+    llm_edit_advice: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "层② 修图建议：能修怎么修 / 修不了或不划算的原因"},
+    )
 
     # 漏斗/用户裁决
     origin: str | None = Field(

@@ -235,6 +235,8 @@ class ProjectService:
                     p.llm_score = sc.score
                     p.llm_reason = sc.reason
                     p.llm_flaws = sc.flaws
+                    p.llm_editable = sc.editable
+                    p.llm_edit_advice = sc.edit_advice
             for entry in score_resp.pk:  # 层②漏斗通过的即「通过」
                 kept_paths.add(entry.path)
                 origin_by_path[entry.path] = entry.origin.value
