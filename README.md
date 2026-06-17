@@ -13,6 +13,32 @@
 
 ---
 
+## 下载与安装
+
+到 [Releases](https://github.com/yuebai-blast/keeper/releases) 下载对应平台的安装包：
+
+| 平台 | 产物 | 安装方式 |
+| :-- | :-- | :-- |
+| macOS · Apple 芯片（M 系列） | `.dmg`（文件名含 `aarch64`） | 打开 dmg，将 Keeper 拖入「应用程序」 |
+| macOS · Intel 芯片 | `.dmg`（文件名含 `x64`/`x86_64`） | 同上 |
+| Windows x64 | `.exe`（NSIS 安装器）或 `.msi` | 双击安装 |
+
+> 产物文件名以 Releases 实际为准；按芯片选对应的 macOS 包。
+
+**首次启动需联网**：应用会一次性下载约 1.6 GB 本地 AI 模型到 `~/.keeper/models`，之后完全离线运行——照片不出本地。首次下载期间启动画面会显示进度。
+
+### 未签名产物的放行
+
+本项目当前不做代码签名/公证，首次打开需手动放行：
+
+- **macOS**：若提示「已损坏」或「无法验证开发者」，到「系统设置 → 隐私与安全性」点「仍要打开」；或在终端执行
+  `xattr -dr com.apple.quarantine /Applications/Keeper.app`
+- **Windows**：SmartScreen 拦截时点「更多信息 → 仍要运行」。
+
+### 配置大模型
+
+选片的层②评分需要火山方舟（Ark）API key：在应用「设置」页录入，或写入 `~/.keeper/ark_key`（权限 0600，Windows 依赖用户目录 ACL）。密钥绝不入库。
+
 ## 当前阶段：MVP（纯本地，无云端）
 
 这一版**不含云端中转 / 计费 / 支付**。大模型由本地推理服务直接调用（API key 本地管理）。商业化的云端层是后续版本，架构上已通过 `Scorer` 接口预留了平滑替换的位置。
