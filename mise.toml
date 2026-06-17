@@ -74,3 +74,31 @@ mise run bundle-sidecar
 mise run stage-sidecar
 pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 """
+
+[tasks.site-install]
+description = "安装官网（apps/website）前端依赖"
+dir = "apps/website"
+run = "pnpm install"
+
+[tasks.site-dev]
+description = "启动官网开发服务器（Vite）"
+dir = "apps/website"
+run = "pnpm dev"
+
+[tasks.site-build]
+description = "构建官网静态产物（apps/website/dist）"
+dir = "apps/website"
+run = "pnpm build"
+
+[tasks.site-test]
+description = "跑官网单测（vitest：下载逻辑纯函数）"
+dir = "apps/website"
+run = "pnpm test"
+
+[tasks.site-deploy]
+description = "构建并部署官网到服务器（rsync over ssh）。先 export KEEPER_SITE_HOST / KEEPER_SITE_PATH"
+dir = "."
+run = """
+mise run site-build
+bash deploy/deploy.sh
+"""
