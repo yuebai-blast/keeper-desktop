@@ -71,6 +71,17 @@ class FakeScorer:
         return self._fn(previews, model)
 
 
+class FakeReadiness:
+    """桩 ReadinessService：返回固定就绪态快照，不碰 sqlite / 文件系统。"""
+
+    def __init__(self, status="ready"):
+        self.status = status
+
+    def snapshot(self):
+        return {"status": self.status, "detail": "", "retryable": False,
+                "first_run": False, "modules": []}
+
+
 def _mock_preview(monkeypatch):
     """把读图/生成预览换成桩，使 /score 测试不依赖真实文件。"""
     monkeypatch.setattr("keeper_engine.util.imaging.load_for_analysis", lambda p, *a, **k: object())
@@ -150,10 +161,12 @@ def test_score_scorer_unavailable_maps_to_biz_code(app, client, monkeypatch):
     assert _biz_code(resp) == BizCode.SCORER_FAILED.code
 
 
-def test_health_is_enveloped(client):
+def test_health_is_enveloped(app, client):
     # /health 也走统一包装：code=0，就绪态在 data 内。
+    # 用桩 readiness 隔离 sqlite / 文件系统（这些用例不进 lifespan，不建表，不能依赖真实 DB）。
+    app.container.readiness_service.override(providers.Object(FakeReadiness("ready")))
     body = _data(client.get("/health"))
-    assert body["status"] in ("awaiting_consent", "loading", "ready", "error")
+    assert body["status"] == "ready"
     assert "version" in body
 
 
