@@ -23,6 +23,7 @@ from typing import Protocol
 from volcenginesdkarkruntime import Ark
 
 from ..config.settings import Settings
+from ..enumeration.edit_verdict import EditVerdict
 from ..exception.errors import ScorerError
 from ..vo.score import Score
 
@@ -67,8 +68,9 @@ def extract_output_text(resp) -> str:
     return "".join(parts)
 
 
-def parse_response(text: str) -> tuple[float, str, str]:
-    """从大模型回复抽出 {"score","reason","flaws"}，clamp 0–100、截断。解析失败抛异常。"""
+def parse_response(text: str) -> tuple[float, str, str, str, str]:
+    """从大模型回复抽出 {"score","reason","flaws","editable","edit_advice"}：
+    score clamp 0–100，reason/flaws/edit_advice 截断，editable 落到合法四态（非法兜底 ready）。解析失败抛异常。"""
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         raise ValueError(f"无法从打分输出解析 JSON：{text!r}")
@@ -76,7 +78,9 @@ def parse_response(text: str) -> tuple[float, str, str]:
     score = max(0.0, min(100.0, float(data["score"])))
     reason = str(data.get("reason", "")).strip()[:30]
     flaws = str(data.get("flaws", "")).strip()[:100]
-    return round(score, 2), reason, flaws
+    editable = EditVerdict.coerce(data.get("editable"))
+    edit_advice = str(data.get("edit_advice", "")).strip()[:40]
+    return round(score, 2), reason, flaws, editable, edit_advice
 
 
 class LocalDirectScorer:
@@ -133,8 +137,11 @@ class LocalDirectScorer:
                     # 开思考会吃掉回答预算导致 JSON 截断，故显式关闭（见火山 Response 文档）。
                     thinking={"type": "disabled"},
                 )
-                score, reason, flaws = parse_response(extract_output_text(resp))
-                return Score(path=preview.path, score=score, reason=reason, flaws=flaws)
+                score, reason, flaws, editable, edit_advice = parse_response(extract_output_text(resp))
+                return Score(
+                    path=preview.path, score=score, reason=reason, flaws=flaws,
+                    editable=editable, edit_advice=edit_advice,
+                )
             except Exception as e:  # noqa: BLE001 —— 重试后仍失败则包装上抛
                 last_err = e
         raise ScorerError(f"{Path(preview.path).name} 打分失败：{last_err}") from last_err
