@@ -64,13 +64,13 @@ cp "sidecar/dist/keeper-sidecar$EXT" "apps/desktop/src-tauri/binaries/keeper-sid
 """
 
 [tasks.package]
-# 打包态才需要把 sidecar 二进制打进应用：externalBin 只在打包专用配置 tauri.bundle.conf.json 里，
-# 经 --config 合并进来；base tauri.conf.json 不含 externalBin，所以本地 dev（mise run app）零依赖、
-# 不必先跑 stage-sidecar。
+# 打包态才需要把 sidecar 二进制打进应用：externalBin 只在打包专用配置 tauri.bundle.conf.json5 里，
+# 经 --config 合并进来；base tauri.conf.json5 不含 externalBin，所以本地 dev（mise run app）零依赖、
+# 不必先跑 stage-sidecar。详见 docs/packaging.md。
 description = "打包桌面应用：冻结 sidecar → 放入 binaries → tauri build（带 externalBin 的打包专用配置）"
 dir = "apps/desktop"
 run = """
 mise run bundle-sidecar
 mise run stage-sidecar
-pnpm tauri build --config src-tauri/tauri.bundle.conf.json
+pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 """

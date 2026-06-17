@@ -1,0 +1,21 @@
+// Keeper —— 打包【专用】覆盖配置（externalBin / sidecar）。
+//
+// 只在打包这一步用：`pnpm tauri build --config src-tauri/tauri.bundle.conf.json5`
+// （由 `mise run package` 自动带上）。tauri 会把它【合并】到 tauri.conf.json5 之上，
+// 冲突字段以本文件为准，其余沿用基础配置。
+//
+// 为什么单独拆一个文件：externalBin 一旦写进基础配置，`mise run app`（dev）启动时
+// tauri 就会强制要求 binaries/ 下存在按 target-triple 命名的二进制，否则报错。
+// 而 dev 下 sidecar 是 `mise run sidecar` 单独跑的、binaries/ 是空的。所以把
+// externalBin 单独隔离到这里，让本地 dev 零二进制依赖。
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    // externalBin：随应用一起分发的「外部二进制」（Tauri 术语 sidecar）。
+    // 这里只写【基名】，tauri 会在打包时自动去找按当前 target-triple 后缀命名的实际文件，
+    // 例如 macOS arm64 上找 binaries/keeper-sidecar-aarch64-apple-darwin。
+    // 该文件由 `mise run bundle-sidecar`（PyInstaller 冻结）+ `mise run stage-sidecar`（改名落位）产出。
+    // 安装后，Rust 壳通过 app.shell().sidecar("keeper-sidecar") 拉起它（见 src/lib.rs）。
+    "externalBin": ["binaries/keeper-sidecar"]
+  }
+}

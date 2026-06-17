@@ -15,13 +15,16 @@ name = "desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+# config-json5：允许 Tauri 配置文件用 JSON5 书写（即支持注释 + 尾逗号）。
+# 启用后本项目的 tauri.conf / tauri.bundle.conf / capabilities/* 一律用 .json5 后缀。
+tauri-build = { version = "2", features = ["config-json5"] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-shell = "2"
+# tauri 运行时侧也要开同一个 feature，构建期与运行期解析配置才一致。
+tauri = { version = "2", features = ["config-json5"] }
+tauri-plugin-opener = "2"       # 用系统默认程序打开路径（完成页打开输出目录）
+tauri-plugin-dialog = "2"       # 原生目录选择对话框（pick_folder）
+tauri-plugin-shell = "2"        # 以 sidecar 方式拉起内置 keeper-sidecar 可执行
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

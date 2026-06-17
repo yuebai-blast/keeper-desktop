@@ -1,0 +1,57 @@
+// Keeper 桌面应用 —— Tauri「基础配置」。
+//
+// 这是 dev 与打包都会加载的根配置（`pnpm tauri dev` / `pnpm tauri build` 默认读它）。
+// 注意：本文件【刻意不含 externalBin】——本地开发不需要把 sidecar 二进制打进来，
+// sidecar 由 `mise run sidecar` 单独起。打包时才用 --config 合并进 tauri.bundle.conf.json5，
+// 把 sidecar 二进制塞进安装包（见 docs/packaging.md）。
+//
+// 能写注释是因为 Cargo.toml 里给 tauri/tauri-build 开了 config-json5 feature。
+{
+  "$schema": "https://schema.tauri.app/config/2",
+
+  "productName": "Keeper",          // 应用展示名（窗口标题栏外的系统层名称、安装包名）
+  "version": "0.1.0",               // 应用版本，写进安装包元数据；与 package.json 各自独立
+  "identifier": "com.keeper.app",   // 全局唯一 bundle id（反向域名）；macOS/Windows 用它认应用，一经发布勿改
+
+  "build": {
+    // dev：tauri 起壳前先跑的前端 dev server 命令 + 它的地址
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    // build：打包前先把前端编译成静态资源，产物目录由 frontendDist 指定
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"        // 相对 src-tauri/ 的前端构建产物目录（被嵌入应用）
+  },
+
+  "app": {
+    "windows": [
+      {
+        "title": "Keeper · 留影",   // 主窗口标题栏文字
+        "width": 1100,
+        "height": 720,
+        "minWidth": 880,             // 窗口最小尺寸，防止布局被压垮
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      // CSP（内容安全策略）。本地优先应用、前端资源全部内嵌，这里不额外限制，
+      // 置 null 表示不注入 CSP 头。如未来引入远程资源需收紧。
+      "csp": null
+    }
+  },
+
+  // ───────────────────────── 打包 / 安装包相关 ─────────────────────────
+  // bundle 段决定 `tauri build` 产出什么样的安装包（macOS 的 .app/.dmg、
+  // Windows 的 .msi/.exe、Linux 的 .deb/.AppImage 等）。
+  "bundle": {
+    "active": true,        // 是否生成安装包；false 则只编出可执行不打包
+    "targets": "all",      // 在当前平台上能产出的所有安装包格式都产出（mac=app+dmg，win=msi+nsis…）
+    // 各分辨率/格式的应用图标。.icns 给 macOS，.ico 给 Windows，png 给 Linux 及托盘。
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
