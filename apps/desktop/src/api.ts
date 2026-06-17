@@ -292,6 +292,8 @@ export interface PhotoView {
   llm_score: number | null;
   llm_reason: string;
   llm_flaws: string;
+  llm_editable: "ready" | "worth_editing" | "not_worth" | "unfixable" | "";
+  llm_edit_advice: string;
   origin: "passed" | "quota_fill" | null;
   selection: Selection | null;
   rescued: boolean;

@@ -12,6 +12,21 @@ const num = (v: number | null | undefined, d = 0) =>
 
 const hasLlm = computed(() => props.photo.llm_score != null);
 const detail = computed(() => props.photo.local_detail);
+
+const VERDICT_LABEL: Record<string, string> = {
+  ready: "开图即用",
+  worth_editing: "值得修",
+  not_worth: "不划算",
+  unfixable: "修不了",
+};
+const VERDICT_CLASS: Record<string, string> = {
+  ready: "v-ready",
+  worth_editing: "v-worth",
+  not_worth: "v-notworth",
+  unfixable: "v-unfixable",
+};
+const verdictLabel = computed(() => VERDICT_LABEL[props.photo.llm_editable] ?? "");
+const verdictClass = computed(() => VERDICT_CLASS[props.photo.llm_editable] ?? "");
 </script>
 
 <template>
@@ -27,6 +42,10 @@ const detail = computed(() => props.photo.local_detail);
       </div>
       <p v-if="photo.llm_reason" class="reason">{{ photo.llm_reason }}</p>
       <p v-if="photo.llm_flaws" class="flaws">瑕疵：{{ photo.llm_flaws }}</p>
+      <p v-if="photo.llm_editable" class="advice">
+        <span class="tag" :class="verdictClass">{{ verdictLabel }}</span>
+        <span v-if="photo.llm_edit_advice" class="advice-text">{{ photo.llm_edit_advice }}</span>
+      </p>
     </div>
 
     <!-- 层①本地明细（始终有） -->
@@ -63,6 +82,12 @@ const detail = computed(() => props.photo.local_detail);
 .muted { color: var(--ink-faint); font-family: var(--font-mono); font-size: 11px; }
 .reason { margin: 0; color: var(--ink-dim); line-height: 1.5; }
 .flaws { margin: 0; color: var(--red); font-size: 12px; }
+.advice { margin: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.advice-text { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+.tag.v-ready { color: var(--green); border-color: var(--green); }
+.tag.v-worth { color: var(--amber-bright); border-color: var(--amber); }
+.tag.v-notworth { color: var(--ink-faint); }
+.tag.v-unfixable { color: var(--red); border-color: var(--red); }
 .tag {
   font-family: var(--font-mono);
   font-size: 10.5px;
