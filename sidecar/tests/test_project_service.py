@@ -6,6 +6,7 @@ import pytest
 from PIL import Image
 
 from keeper_engine.client.geocode_client import GeocodeClient
+from keeper_engine.enumeration.assess_phase import AssessPhase
 from keeper_engine.enumeration.biz_code import BizCode
 from keeper_engine.exception.errors import BizException
 from keeper_engine.config.database import Database
@@ -24,6 +25,7 @@ from keeper_engine.response.score_response import ScoreResponse
 from keeper_engine.service.funnel_service import FunnelService
 from keeper_engine.service.params_service import ParamsService
 from keeper_engine.service.pk_service import PkService
+from keeper_engine.service.progress_tracker import ProgressTracker
 from keeper_engine.service.project_service import ProjectService
 from keeper_engine.service.ranking_service import RankingService
 from keeper_engine.service.workspace_service import WorkspaceService
@@ -49,10 +51,13 @@ class FakeGrouping:
 class FakeAssess:
     """每张给本地分；全部作为 survivors 进层②。"""
 
-    def assess(self, req) -> AssessResponse:
+    def assess(self, req, on_progress=None) -> AssessResponse:
         paths = [p.path for p in req.photos]
         scores = [LocalScore(path=p, score=70.0) for p in paths]
         survivors = [SurvivorEntry(path=p, score=70.0, origin=PkOrigin.PASSED) for p in paths]
+        for _ in paths:
+            if on_progress is not None:
+                on_progress()
         return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors,
                               n=3, m=5, errors=[])
 
@@ -61,11 +66,14 @@ class FakeScoring:
     """层②：第一张给高分（≥60），其余给低分（<60）；漏斗保底数 n 决定最终通过数。
     小组（size≤n）时所有照片仍全通（巧妇难为无米之炊），需用较大源（size>n）测淘汰。"""
 
-    def score(self, req) -> ScoreResponse:
+    def score(self, req, on_progress=None) -> ScoreResponse:
         scores = [
             Score(path=p, score=80.0 if i == 0 else 50.0, reason="好", flaws="")
             for i, p in enumerate(req.photos)
         ]
+        for _ in req.photos:
+            if on_progress is not None:
+                on_progress()
         pk = [PkEntry(path=req.photos[0], origin=PkOrigin.PASSED, score=80.0, reason="好")]
         return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3, errors=[])
 
@@ -73,11 +81,14 @@ class FakeScoring:
 class FakeAssessLastFails:
     """组内最后一张层①失败（记入 errors、不在 scores/survivors）；其余正常。"""
 
-    def assess(self, req) -> AssessResponse:
+    def assess(self, req, on_progress=None) -> AssessResponse:
         paths = [p.path for p in req.photos]
         ok, bad = paths[:-1], paths[-1]
         scores = [LocalScore(path=p, score=70.0) for p in ok]
         survivors = [SurvivorEntry(path=p, score=70.0, origin=PkOrigin.PASSED) for p in ok]
+        for _ in paths:
+            if on_progress is not None:
+                on_progress()
         return AssessResponse(group_id=req.group_id, scores=scores, survivors=survivors,
                               n=3, m=5, errors=[PhotoError(path=bad, error="ValueError: 读图失败")])
 
@@ -89,7 +100,7 @@ class CountingAssess:
         self.fail = set(fail_paths)
         self.scored: list[str] = []
 
-    def assess(self, req):
+    def assess(self, req, on_progress=None):
         ok, errs = [], []
         for ref in req.photos:
             self.scored.append(ref.path)
@@ -97,6 +108,8 @@ class CountingAssess:
                 errs.append(PhotoError(path=ref.path, error="ValueError: 读图失败"))
             else:
                 ok.append(LocalScore(path=ref.path, score=70.0))
+            if on_progress is not None:
+                on_progress()
         survivors = [SurvivorEntry(path=s.path, score=70.0, origin=PkOrigin.PASSED) for s in ok]
         return AssessResponse(group_id=req.group_id, scores=ok, survivors=survivors,
                               n=3, m=5, errors=errs)
@@ -105,10 +118,13 @@ class CountingAssess:
 class FakeScoringLastFails:
     """survivors 里最后一张层②失败（记入 errors、不在 pk）；第一张通过。"""
 
-    def score(self, req) -> ScoreResponse:
+    def score(self, req, on_progress=None) -> ScoreResponse:
         ok, bad = req.photos[:-1], req.photos[-1]
         scores = [Score(path=p, score=80.0, reason="好", flaws="") for p in ok]
         pk = [PkEntry(path=ok[0], origin=PkOrigin.PASSED, score=80.0, reason="好")] if ok else []
+        for _ in req.photos:
+            if on_progress is not None:
+                on_progress()
         return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3,
                              errors=[PhotoError(path=bad, error="TimeoutError: 网络超时")])
 
@@ -123,11 +139,13 @@ def _build_service(tmp_path, assess, scoring):
     funnel = FunnelService()
     params = ParamsService()
     ranking = RankingService(funnel=FunnelService())
+    progress = ProgressTracker()
     service = ProjectService(
         ProjectMapper(db), photos, PhotoGroupMapper(db), pk_mapper,
         FakeGrouping(), assess, scoring, pk,
         funnel, params, ranking,
         WorkspaceService(), GeocodeClient(settings, GeocodeCacheMapper(db)), settings,
+        progress=progress,
     )
     return service, settings
 
@@ -464,3 +482,31 @@ def test_unresolved_failure_blocks_confirm_and_selection(tmp_path):
     # 忽略后解锁
     service.ignore_failures(project.id, "g1")
     assert service.confirm_group(project.id, "g1").group.status == "CONFIRMED"
+
+
+def test_get_progress_idle_for_unknown_project(svc):
+    service, _ = svc
+    p = service.get_progress(123)
+    assert p.phase == AssessPhase.IDLE.value
+
+
+def test_assess_group_marks_progress_done(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    project = service.create("进度甲", str(src))
+    service.group(project.id)
+    service.assess_group(project.id, "g1")
+    p = service.get_progress(project.id)
+    assert p.phase == AssessPhase.DONE.value
+    assert p.group_count == 1 and p.group_index == 1
+
+
+def test_confirm_all_progress_counts_pending_groups(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 6)  # FakeGrouping 对半分成 g1/g2
+    project = service.create("进度乙", str(src))
+    service.group(project.id)
+    service.confirm_all(project.id)
+    p = service.get_progress(project.id)
+    assert p.phase == AssessPhase.DONE.value
+    assert p.group_count == 2  # 两组都待评测，组级总数=2

@@ -67,7 +67,7 @@ class FakeScorer:
     def __init__(self, fn):
         self._fn = fn
 
-    def score(self, previews, model):
+    def score(self, previews, model, on_progress=None):
         return self._fn(previews, model)
 
 

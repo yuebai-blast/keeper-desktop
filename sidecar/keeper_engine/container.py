@@ -28,6 +28,7 @@ from .service.grouping_service import GroupingService
 from .service.params_service import ParamsService
 from .service.pk_service import PkService
 from .service.prescreen_service import PrescreenService
+from .service.progress_tracker import ProgressTracker
 from .service.project_service import ProjectService
 from .service.ranking_service import RankingService
 from .service.readiness_service import ReadinessService
@@ -64,6 +65,9 @@ class Container(containers.DeclarativeContainer):
     readiness_service = providers.Singleton(
         ReadinessService, vision=vision_client, settings=settings, mapper=model_module_mapper
     )
+
+    # ── 评测进度：全局共享侧信道，单例 ──
+    progress_tracker = providers.Singleton(ProgressTracker)
 
     # ── 无状态领域服务 ──
     funnel_service = providers.Factory(FunnelService)
@@ -116,4 +120,5 @@ class Container(containers.DeclarativeContainer):
         workspace=workspace_service,
         geocode=geocode_client,
         settings=settings,
+        progress=progress_tracker,
     )

@@ -21,6 +21,7 @@ from ..request.project_request import (
 )
 from ..response.envelope import EnvelopeRoute
 from ..response.project_response import (
+    AssessProgress,
     CompleteResponse,
     GroupDetailResponse,
     PkView,
@@ -163,6 +164,16 @@ def confirm_all(
 ) -> ProjectDetailResponse:
     """一键通过：未评测的组会触发层②大模型（可能 503/502）。"""
     return svc.confirm_all(project_id)
+
+
+@router.get("/{project_id}/assess/progress", response_model=AssessProgress)
+@inject
+def assess_progress(
+    project_id: int,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> AssessProgress:
+    """评测实时进度（高频轮询、纯读内存）；空闲/未知项目返回 IDLE。"""
+    return svc.get_progress(project_id)
 
 
 @router.post("/{project_id}/complete", response_model=CompleteResponse)

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from PIL import Image
 
 from ..client.geocode_client import GeocodeClient
 from ..config.settings import Settings
+from ..enumeration.assess_phase import AssessPhase
 from ..enumeration.biz_code import BizCode
 from ..entity.photo_group import PhotoGroup
 from ..entity.project import Project
@@ -36,6 +38,7 @@ from ..request.project_request import SelectionChange
 from ..request.score_request import ScoreRequest
 from ..response.common import PhotoError
 from ..response.project_response import (
+    AssessProgress,
     CompleteResponse,
     GroupDetailResponse,
     GroupSummary,
@@ -53,6 +56,7 @@ from .funnel_service import FunnelService
 from .grouping_service import GroupingService
 from .params_service import ParamsService
 from .pk_service import PkService
+from .progress_tracker import ProgressTracker
 from .ranking_service import RankingService
 from .scoring_service import ScoringService
 from .workspace_service import WorkspaceService
@@ -77,6 +81,7 @@ class ProjectService:
         workspace: WorkspaceService,
         geocode: GeocodeClient,
         settings: Settings,
+        progress: ProgressTracker | None = None,
     ) -> None:
         self._projects = project_mapper
         self._photos = photo_mapper
@@ -92,6 +97,7 @@ class ProjectService:
         self._workspace = workspace
         self._geocode = geocode
         self._settings = settings
+        self._progress = progress or ProgressTracker()  # 缺省自建仅兼容老式构造，不参与跨请求共享
 
     # ── 页面一：预览 + 创建 ──────────────────────────────────────────────────
 
@@ -236,6 +242,7 @@ class ProjectService:
     def _assess_and_rank(
         self, group: PhotoGroup, photos: list[ProjectPhoto],
         targets: list[ProjectPhoto] | None = None,
+        *, group_index: int = 1, group_count: int = 1,
     ) -> None:
         """统一评测内核：对缺分/失败且在 targets 内的图调模型，按全组最新分（失败按 0）
         重算 survivors/kept/selection。targets=None 表示全组（首评）。"""
@@ -248,11 +255,19 @@ class ProjectService:
             if p.assess_status == AssessStatus.NOT_ASSESSED.value
             or (p.assess_status == AssessStatus.LAYER1_FAILED.value and p.workspace_path in target_set)
         ]
+
+        pid = group.project_id
+        tick: Callable[[], None] = lambda: self._progress.tick(pid)  # noqa: E731 —— 局部进度回调
+        self._progress.begin(
+            pid, group.group_key, group_index, group_count,
+            phase=AssessPhase.LAYER1, total=len(need_l1),
+        )
+
         if need_l1:
             resp1 = self._assess.assess(AssessRequest(
                 group_id=group.group_key,
                 photos=[PhotoRef(path=p.workspace_path) for p in need_l1],
-            ))
+            ), on_progress=tick)
             for ls in resp1.scores:
                 if (p := by_path.get(ls.path)):
                     self._mark_l1_ok(p, ls)
@@ -276,12 +291,15 @@ class ProjectService:
                 or (p.assess_status == AssessStatus.LAYER2_FAILED.value and p.workspace_path in target_set)
             )
         ]
+
+        self._progress.phase(pid, AssessPhase.LAYER2, total=len(need_l2))
+
         if need_l2:
             resp2 = self._scoring.score(ScoreRequest(
                 group_id=group.group_key,
                 photos=[p.workspace_path for p in need_l2],
                 group_total=total,
-            ))
+            ), on_progress=tick)
             for sc in resp2.scores:
                 if (p := by_path.get(sc.path)):
                     self._mark_l2_ok(p, sc)
@@ -312,19 +330,26 @@ class ProjectService:
         group.status = GroupStatus.ASSESSED.value
         self._groups.update(group)
 
+    def _assess_one(
+        self, project_id: int, group: PhotoGroup, group_index: int, group_count: int
+    ) -> None:
+        """评测单组（含空组兜底）；复用评测内核。不收尾 done()，由调用方统一收尾。"""
+        photos = self._photos.by_group(project_id, group.group_key)
+        if not photos:
+            group.status = GroupStatus.ASSESSED.value
+            self._groups.update(group)
+            return
+        self._assess_and_rank(group, photos, group_index=group_index, group_count=group_count)
+
     def assess_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
         """对一组跑层①+层②并持久化、初始化去留；已评测则原样返回（不覆盖用户裁决）。"""
         group = self._require_group(project_id, group_key)
         if group.status != GroupStatus.PENDING.value:
             return self.get_group_detail(project_id, group_key)
-
-        photos = self._photos.by_group(project_id, group_key)
-        if not photos:
-            group.status = GroupStatus.ASSESSED.value
-            self._groups.update(group)
-            return self.get_group_detail(project_id, group_key)
-
-        self._assess_and_rank(group, photos, targets=None)
+        try:
+            self._assess_one(project_id, group, group_index=1, group_count=1)
+        finally:
+            self._progress.done(project_id)
         return self.get_group_detail(project_id, group_key)
 
     def retry_group(
@@ -341,7 +366,10 @@ class ProjectService:
         else:
             targets = [p for p in photos if p.assess_status in failed and not p.assess_error_ignored]
         if targets:
-            self._assess_and_rank(group, photos, targets=targets)
+            try:
+                self._assess_and_rank(group, photos, targets=targets, group_index=1, group_count=1)
+            finally:
+                self._progress.done(project_id)
         return self.get_group_detail(project_id, group_key)
 
     def ignore_failures(
@@ -401,9 +429,13 @@ class ProjectService:
         会叠加放大本地模型与显存/CPU 占用，风险（OOM/抖动）大于收益，故此处逐组串行。
         """
         self._require_project(project_id)
-        for g in self._groups.by_project(project_id):
-            if g.status == GroupStatus.PENDING.value:
-                self.assess_group(project_id, g.group_key)  # 可能 503/502 上抛
+        pending = [g for g in self._groups.by_project(project_id)
+                   if g.status == GroupStatus.PENDING.value]
+        try:
+            for idx, g in enumerate(pending, start=1):
+                self._assess_one(project_id, g, group_index=idx, group_count=len(pending))
+        finally:
+            self._progress.done(project_id)
         for g in self._groups.by_project(project_id):
             self._require_no_unresolved_failures(project_id, g.group_key)
         for g in self._groups.by_project(project_id):
@@ -411,6 +443,14 @@ class ProjectService:
                 g.status = GroupStatus.CONFIRMED.value
                 self._groups.update(g)
         return self.get_detail(project_id)
+
+    def get_progress(self, project_id: int) -> AssessProgress:
+        """读当前评测进度（纯读内存、不查 DB）；未知/空闲项目返回 IDLE 默认。
+
+        刻意不设 PROJECT_NOT_FOUND 门禁：进度是高频轮询的只读侧信道，
+        避开 DB 既免锁竞争又更快；未知项目返回 IDLE 即可。
+        """
+        return self._progress.get(project_id)
 
     # ── 完成 ────────────────────────────────────────────────────────────────
 
