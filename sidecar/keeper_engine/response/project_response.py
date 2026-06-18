@@ -78,7 +78,9 @@ class PhotoView(BaseModel):
     origin: str | None = None
     selection: str | None = None
     rescued: bool = False
-    assess_error: str | None = None  # 层①/层②评测失败原因（null=正常）
+    assess_status: str = "NOT_ASSESSED"   # 评测状态（见 AssessStatus）
+    assess_error: str | None = None        # 层①/层②评测失败原因（null=正常）
+    assess_error_ignored: bool = False     # 用户是否忽略该失败
 
 
 class PkView(BaseModel):
