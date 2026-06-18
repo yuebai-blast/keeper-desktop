@@ -21,8 +21,11 @@ from keeper_engine.response.assess_response import AssessResponse, SurvivorEntry
 from keeper_engine.response.common import PhotoError
 from keeper_engine.response.group_response import GroupResponse
 from keeper_engine.response.score_response import ScoreResponse
+from keeper_engine.service.funnel_service import FunnelService
+from keeper_engine.service.params_service import ParamsService
 from keeper_engine.service.pk_service import PkService
 from keeper_engine.service.project_service import ProjectService
+from keeper_engine.service.ranking_service import RankingService
 from keeper_engine.service.workspace_service import WorkspaceService
 from keeper_engine.vo.group import Group
 from keeper_engine.vo.local_score import LocalScore
@@ -54,10 +57,14 @@ class FakeAssess:
 
 
 class FakeScoring:
-    """层②：只让每组第一张通过（pk），其余淘汰——产出有通过有未通过。"""
+    """层②：第一张给高分（≥60），其余给低分（<60）；漏斗保底数 n 决定最终通过数。
+    小组（size≤n）时所有照片仍全通（巧妇难为无米之炊），需用较大源（size>n）测淘汰。"""
 
     def score(self, req) -> ScoreResponse:
-        scores = [Score(path=p, score=80.0, reason="好", flaws="") for p in req.photos]
+        scores = [
+            Score(path=p, score=80.0 if i == 0 else 50.0, reason="好", flaws="")
+            for i, p in enumerate(req.photos)
+        ]
         pk = [PkEntry(path=req.photos[0], origin=PkOrigin.PASSED, score=80.0, reason="好")]
         return ScoreResponse(group_id=req.group_id, scores=scores, pk=pk, n=3, errors=[])
 
@@ -92,9 +99,13 @@ def _build_service(tmp_path, assess, scoring):
     photos = ProjectPhotoMapper(db)
     pk_mapper = PkStateMapper(db)
     pk = PkService(photos, pk_mapper)
+    funnel = FunnelService()
+    params = ParamsService()
+    ranking = RankingService(funnel=FunnelService())
     service = ProjectService(
         ProjectMapper(db), photos, PhotoGroupMapper(db), pk_mapper,
         FakeGrouping(), assess, scoring, pk,
+        funnel, params, ranking,
         WorkspaceService(), GeocodeClient(settings, GeocodeCacheMapper(db)), settings,
     )
     return service, settings
@@ -170,7 +181,8 @@ def test_delete_missing_project_rejected(svc):
 
 def test_full_flow_to_completion(svc, tmp_path):
     service, settings = svc
-    src = _make_source(tmp_path, 4)
+    # 用 8 张：FakeGrouping 各给 g1/g2 各 4 张，n=3 < 4 使漏斗能淘汰低分（50.0）张。
+    src = _make_source(tmp_path, 8)
     project = service.create("流程", str(src))
     pid = project.id
 
@@ -178,10 +190,10 @@ def test_full_flow_to_completion(svc, tmp_path):
     assert len(detail.groups) == 2
     assert detail.project.status == "SELECTING"
 
-    # 评测一组：初始化去留（每组第一张通过，其余未通过）
+    # 评测一组：初始化去留（漏斗保底 n=3，第一张 80.0 通过 + 兜底 2 张 50.0，共 3 KEPT，1 DISCARDED）
     gd = service.assess_group(pid, "g1")
     assert gd.group.status == "ASSESSED"
-    assert sum(1 for p in gd.photos if p.selection == Selection.KEPT.value) == 1
+    assert sum(1 for p in gd.photos if p.selection == Selection.KEPT.value) == 3
     assert any(p.selection == Selection.DISCARDED.value for p in gd.photos)
     assert all(p.local_score == 70.0 for p in gd.photos)  # 层①落库
 
@@ -195,12 +207,12 @@ def test_full_flow_to_completion(svc, tmp_path):
     after = service.get_detail(pid)
     assert all(g.status == "CONFIRMED" for g in after.groups)
 
-    # 完成：归档「通过」到输出目录 + 删 workspace
+    # 完成：归档「通过」到输出目录 + 删 workspace（两组各 3 张通过，共 6 张）
     res = service.complete(pid)
     out = settings.output_root / "流程"
     assert res.output_dir == str(out)
-    assert res.kept_count == 2  # 两组各 1 张通过
-    assert out.is_dir() and len(list(out.glob("*.jpg"))) == 2
+    assert res.kept_count == 6  # 两组各 3 张通过（漏斗保底 n=3）
+    assert out.is_dir() and len(list(out.glob("*.jpg"))) == 6
     assert not (settings.workspace_dir / "流程").exists()  # workspace 已清理
     assert service.get_detail(pid).project.status == "COMPLETED"
 
@@ -277,7 +289,8 @@ def test_layer2_failure_surfaces_assess_error(tmp_path):
 
 def test_manual_selection_override(svc, tmp_path):
     service, _ = svc
-    src = _make_source(tmp_path, 4)
+    # 用 8 张：g1=4 张，n=3，FakeScoring 使第一张 80.0、其余 50.0 → 3 KEPT、1 DISCARDED
+    src = _make_source(tmp_path, 8)
     project = service.create("改判", str(src))
     service.group(project.id)
     gd = service.assess_group(project.id, "g1")
@@ -291,3 +304,31 @@ def test_manual_selection_override(svc, tmp_path):
     )
     flipped = next(p for p in gd2.photos if p.id == discarded.id)
     assert flipped.selection == Selection.KEPT.value and flipped.rescued is True
+
+
+def test_layer1_failure_sets_status_and_zero_score_discarded(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)  # g1 = 前两张
+    project = service.create("L1", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+
+    failed = [p for p in gd.photos if p.assess_status == "LAYER1_FAILED"]
+    assert len(failed) == 1
+    assert failed[0].local_score is None
+    assert failed[0].selection == Selection.DISCARDED.value
+    assert all(p.assess_status == "SUCCESS" for p in gd.photos if p.id != failed[0].id)
+
+
+def test_layer2_failure_sets_status(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
+    src = _make_source(tmp_path, 4)
+    project = service.create("L2", str(src))
+    service.group(project.id)
+    gd = service.assess_group(project.id, "g1")
+
+    failed = [p for p in gd.photos if p.assess_status == "LAYER2_FAILED"]
+    assert len(failed) == 1
+    assert failed[0].local_score == 70.0
+    assert failed[0].llm_score is None
+    assert failed[0].selection == Selection.DISCARDED.value

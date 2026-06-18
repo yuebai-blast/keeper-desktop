@@ -45,9 +45,15 @@ from ..response.project_response import (
     ProjectView,
 )
 from ..util import imaging
+from ..enumeration.assess_status import AssessStatus
+from ..vo.local_score import LocalScore
+from ..vo.score import Score
 from .assess_service import AssessService
+from .funnel_service import FunnelService
 from .grouping_service import GroupingService
+from .params_service import ParamsService
 from .pk_service import PkService
+from .ranking_service import RankingService
 from .scoring_service import ScoringService
 from .workspace_service import WorkspaceService
 
@@ -65,6 +71,9 @@ class ProjectService:
         assess: AssessService,
         scoring: ScoringService,
         pk: PkService,
+        funnel: FunnelService,
+        params: ParamsService,
+        ranking: RankingService,
         workspace: WorkspaceService,
         geocode: GeocodeClient,
         settings: Settings,
@@ -77,6 +86,9 @@ class ProjectService:
         self._assess = assess
         self._scoring = scoring
         self._pk = pk
+        self._funnel = funnel
+        self._params = params
+        self._ranking = ranking
         self._workspace = workspace
         self._geocode = geocode
         self._settings = settings
@@ -195,59 +207,101 @@ class ProjectService:
 
     # ── 评测（层①+层②）──────────────────────────────────────────────────────
 
-    def assess_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
-        """对一组跑层①+层②并持久化、初始化去留；已评测则原样返回（不覆盖用户裁决）。"""
-        group = self._require_group(project_id, group_key)
-        if group.status != GroupStatus.PENDING.value:
-            return self.get_group_detail(project_id, group_key)
+    # ── 评测核心：首评 / 重试 共用 ───────────────────────────────────────────
 
-        photos = self._photos.by_group(project_id, group_key)
-        if not photos:
-            group.status = GroupStatus.ASSESSED.value
-            self._groups.update(group)
-            return self.get_group_detail(project_id, group_key)
+    @staticmethod
+    def _mark_l1_ok(p: ProjectPhoto, ls) -> None:
+        p.local_score = ls.score
+        p.local_detail = ls.detail.model_dump() if ls.detail else None
+        p.assess_status = AssessStatus.SUCCESS.value
+        p.assess_error = None
 
+    @staticmethod
+    def _mark_l2_ok(p: ProjectPhoto, sc) -> None:
+        p.llm_score = sc.score
+        p.llm_reason = sc.reason
+        p.llm_flaws = sc.flaws
+        p.llm_editable = sc.editable
+        p.llm_edit_advice = sc.edit_advice
+        p.assess_status = AssessStatus.SUCCESS.value
+        p.assess_error = None
+
+    @staticmethod
+    def _mark_failed(p: ProjectPhoto, status: AssessStatus, error: str) -> None:
+        p.assess_status = status.value
+        p.assess_error = error
+
+    def _assess_and_rank(
+        self, group: PhotoGroup, photos: list[ProjectPhoto],
+        targets: list[ProjectPhoto] | None = None,
+    ) -> None:
+        """统一评测内核：对缺分/失败且在 targets 内的图调模型，按全组最新分（失败按 0）
+        重算 survivors/kept/selection。targets=None 表示全组（首评）。"""
         by_path = {p.workspace_path: p for p in photos}
+        target_set = set(by_path) if targets is None else {p.workspace_path for p in targets}
 
-        # 层①：本地评分（模型未就绪 → 503 上抛）。先持久化，保证层②失败时层①不白跑。
-        assess_resp = self._assess.assess(AssessRequest(
-            group_id=group_key,
-            photos=[PhotoRef(path=p.workspace_path) for p in photos],
-        ))
-        for ls in assess_resp.scores:
-            p = by_path.get(ls.path)
-            if p:
-                p.local_score = ls.score
-                p.local_detail = ls.detail.model_dump() if ls.detail else None
-        for err in assess_resp.errors:  # 层①单张失败：透出失败原因（不改去留行为）
-            p = by_path.get(err.path)
-            if p:
-                p.assess_error = err.error
-        self._photos.update_many(photos)
-
-        survivors = [s.path for s in assess_resp.survivors]
-        kept_paths: set[str] = set()
-        origin_by_path: dict[str, str] = {}
-        if survivors:
-            # 层②：大模型打分（缺 key/网络 → 502 上抛；此时层①已落库）。
-            score_resp = self._scoring.score(ScoreRequest(
-                group_id=group_key, photos=survivors, group_total=len(photos),
+        # 层①：首评(NOT_ASSESSED) 全跑 + 重试目标里的层①失败
+        need_l1 = [
+            p for p in photos
+            if p.assess_status == AssessStatus.NOT_ASSESSED.value
+            or (p.assess_status == AssessStatus.LAYER1_FAILED.value and p.workspace_path in target_set)
+        ]
+        if need_l1:
+            resp1 = self._assess.assess(AssessRequest(
+                group_id=group.group_key,
+                photos=[PhotoRef(path=p.workspace_path) for p in need_l1],
             ))
-            for sc in score_resp.scores:
-                p = by_path.get(sc.path)
-                if p:
-                    p.llm_score = sc.score
-                    p.llm_reason = sc.reason
-                    p.llm_flaws = sc.flaws
-                    p.llm_editable = sc.editable
-                    p.llm_edit_advice = sc.edit_advice
-            for err in score_resp.errors:  # 层②单张失败：透出失败原因（不改去留行为）
-                p = by_path.get(err.path)
-                if p:
-                    p.assess_error = err.error
-            for entry in score_resp.pk:  # 层②漏斗通过的即「通过」
-                kept_paths.add(entry.path)
-                origin_by_path[entry.path] = entry.origin.value
+            for ls in resp1.scores:
+                if (p := by_path.get(ls.path)):
+                    self._mark_l1_ok(p, ls)
+            for err in resp1.errors:
+                if (p := by_path.get(err.path)):
+                    self._mark_failed(p, AssessStatus.LAYER1_FAILED, err.error)
+        self._photos.update_many(photos)  # 先落层①，层②失败不白跑
+
+        # 重算 survivors（全组，失败/无分按 0；层①失败者即使进漏斗也不晋级）
+        total = len(photos)
+        m = self._params.compute_m(self._params.compute_n(total))
+        local_scored = [LocalScore(path=p.workspace_path, score=p.local_score or 0.0) for p in photos]
+        survivor_paths = {ls.path for ls, _ in self._funnel.apply_funnel(local_scored, m)}
+        survivors = [
+            p for p in photos
+            if p.workspace_path in survivor_paths
+            and p.assess_status != AssessStatus.LAYER1_FAILED.value
+        ]
+
+        # 层②：survivor 里需打分（新晋/首次 SUCCESS 无 llm 分 + 目标里的层②失败）；层①失败者不调
+        need_l2 = [
+            p for p in survivors
+            if p.llm_score is None and (
+                p.assess_status == AssessStatus.SUCCESS.value
+                or (p.assess_status == AssessStatus.LAYER2_FAILED.value and p.workspace_path in target_set)
+            )
+        ]
+        if need_l2:
+            resp2 = self._scoring.score(ScoreRequest(
+                group_id=group.group_key,
+                photos=[p.workspace_path for p in need_l2],
+                group_total=total,
+            ))
+            for sc in resp2.scores:
+                if (p := by_path.get(sc.path)):
+                    self._mark_l2_ok(p, sc)
+            for err in resp2.errors:
+                if (p := by_path.get(err.path)):
+                    self._mark_failed(p, AssessStatus.LAYER2_FAILED, err.error)
+
+        # 重算 kept（全组 survivors 中层②成功打分的，失败者得分为 0 不参与排名）
+        n = self._params.compute_n(total)
+        llm_scored = [
+            Score(path=p.workspace_path, score=p.llm_score or 0.0,
+                  reason=p.llm_reason or "", flaws=p.llm_flaws or "")
+            for p in survivors
+            if p.llm_score is not None  # 层②失败/未打分者不参与排名，直接淘汰
+        ]
+        pk_set = self._ranking.assemble_pk_set(group.group_key, llm_scored, n)
+        kept_paths = {e.path for e in pk_set.entries}
+        origin_by_path = {e.path: e.origin.value for e in pk_set.entries}
 
         for p in photos:
             if p.workspace_path in kept_paths:
@@ -260,6 +314,20 @@ class ProjectService:
 
         group.status = GroupStatus.ASSESSED.value
         self._groups.update(group)
+
+    def assess_group(self, project_id: int, group_key: str) -> GroupDetailResponse:
+        """对一组跑层①+层②并持久化、初始化去留；已评测则原样返回（不覆盖用户裁决）。"""
+        group = self._require_group(project_id, group_key)
+        if group.status != GroupStatus.PENDING.value:
+            return self.get_group_detail(project_id, group_key)
+
+        photos = self._photos.by_group(project_id, group_key)
+        if not photos:
+            group.status = GroupStatus.ASSESSED.value
+            self._groups.update(group)
+            return self.get_group_detail(project_id, group_key)
+
+        self._assess_and_rank(group, photos, targets=None)
         return self.get_group_detail(project_id, group_key)
 
     # ── 用户裁决 ──────────────────────────────────────────────────────────────
