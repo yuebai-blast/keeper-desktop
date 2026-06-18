@@ -175,8 +175,8 @@ async function doSubmit() {
   border: 1px solid var(--line-strong);
   color: var(--ink-dim);
 }
-.status.s-confirmed { color: var(--green); border-color: var(--green); }
-.status.s-assessed { color: var(--amber-bright); border-color: var(--amber); }
+.status.s-CONFIRMED { color: var(--green); border-color: var(--green); }
+.status.s-ASSESSED { color: var(--amber-bright); border-color: var(--amber); }
 .kept { font-family: var(--font-mono); font-size: 11.5px; color: var(--green); }
 .sub { margin-top: 5px; display: flex; gap: 7px; color: var(--ink-faint); font-size: 12px; font-family: var(--font-mono); }
 

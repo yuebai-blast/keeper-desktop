@@ -215,6 +215,7 @@ class ProjectService:
         p.local_detail = ls.detail.model_dump() if ls.detail else None
         p.assess_status = AssessStatus.SUCCESS.value
         p.assess_error = None
+        p.assess_error_ignored = False
 
     @staticmethod
     def _mark_l2_ok(p: ProjectPhoto, sc) -> None:
@@ -225,6 +226,7 @@ class ProjectService:
         p.llm_edit_advice = sc.edit_advice
         p.assess_status = AssessStatus.SUCCESS.value
         p.assess_error = None
+        p.assess_error_ignored = False
 
     @staticmethod
     def _mark_failed(p: ProjectPhoto, status: AssessStatus, error: str) -> None:
@@ -335,7 +337,7 @@ class ProjectService:
             AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value
         }
         if photo_id is not None:
-            targets = [p for p in photos if p.id == photo_id and p.assess_status in failed]
+            targets = [p for p in photos if p.id == photo_id and p.assess_status in failed and not p.assess_error_ignored]
         else:
             targets = [p for p in photos if p.assess_status in failed and not p.assess_error_ignored]
         if targets:
@@ -500,7 +502,7 @@ class ProjectService:
             kept_count=sum(1 for p in photos if p.selection == Selection.KEPT.value),
             failed_count=sum(
                 1 for p in photos
-                if p.assess_status in ("LAYER1_FAILED", "LAYER2_FAILED") and not p.assess_error_ignored
+                if p.assess_status in (AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value) and not p.assess_error_ignored
             ),
             photo_paths=[p.workspace_path for p in photos],
             photo_names=[p.original_rel_path or p.filename for p in photos],

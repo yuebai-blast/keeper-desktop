@@ -381,6 +381,29 @@ def test_retry_single_recovers_and_does_not_rescore_others(tmp_path):
     assert recovered.local_score == 70.0
 
 
+def test_retry_ignored_photo_is_noop_and_keeps_confirmed(tmp_path):
+    """已忽略的失败图被单张重试时应是 no-op：不重评、不把已确认组降级/重置裁决。"""
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 8)  # g1 = 前 4 张
+    project = service.create("ign-retry", str(src))
+    service.group(project.id)
+    g1 = service._photos.by_group(project.id, "g1")
+    bad = g1[-1]
+    failing.fail = {bad.workspace_path}
+
+    service.assess_group(project.id, "g1")
+    service.ignore_failures(project.id, "g1")          # 忽略失败 → 解阻塞
+    gd = service.confirm_group(project.id, "g1")        # 确认本组
+    assert gd.group.status == "CONFIRMED"
+
+    failing.fail = set()
+    failing.scored.clear()
+    gd2 = service.retry_group(project.id, "g1", photo_id=bad.id)
+    assert failing.scored == []                         # 已忽略图不被重评
+    assert gd2.group.status == "CONFIRMED"              # 组未被降级/重算
+
+
 def test_ignore_failures_keeps_status_but_marks_ignored(tmp_path):
     service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
     src = _make_source(tmp_path, 4)

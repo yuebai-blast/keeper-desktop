@@ -131,7 +131,7 @@ function rescue(p: PhotoView) {
             </p>
             <PhotoStats :photo="p" />
             <div class="ops">
-              <template v-if="p.assess_error">
+              <template v-if="p.assess_error && !p.assess_error_ignored">
                 <button class="btn btn--ghost" :disabled="store.busy" @click="retryOne(p)">重试</button>
                 <button class="btn btn--ghost" :disabled="store.busy" @click="ignoreOne(p)">忽略</button>
               </template>
