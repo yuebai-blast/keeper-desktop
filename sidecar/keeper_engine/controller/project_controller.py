@@ -130,6 +130,7 @@ def ignore_failures(
     req: IgnoreFailuresRequest,
     svc: ProjectService = Depends(Provide[Container.project_service]),
 ) -> GroupDetailResponse:
+    """忽略评测失败（置 ignored，解除对本组裁决的阻塞）。"""
     return svc.ignore_failures(project_id, group_key, req.photo_id)
 
 

@@ -335,7 +335,7 @@ class ProjectService:
             AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value
         }
         if photo_id is not None:
-            targets = [p for p in photos if p.id == photo_id]
+            targets = [p for p in photos if p.id == photo_id and p.assess_status in failed]
         else:
             targets = [p for p in photos if p.assess_status in failed and not p.assess_error_ignored]
         if targets:

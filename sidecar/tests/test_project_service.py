@@ -392,3 +392,29 @@ def test_ignore_failures_keeps_status_but_marks_ignored(tmp_path):
     gd = service.ignore_failures(project.id, "g1")
     failed = [p for p in gd.photos if p.assess_status == "LAYER1_FAILED"]
     assert failed and all(p.assess_error_ignored for p in failed)
+    # ignore 只置 ignored 标志，不改 assess_status——失败图状态仍为 LAYER1_FAILED
+    assert all(p.assess_status == "LAYER1_FAILED" for p in failed)
+
+
+def test_retry_nonfailed_photo_id_is_noop(tmp_path):
+    """对一张已 SUCCESS 的图调 retry_group(photo_id=...)：不被重评，状态不变。"""
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("retry-noop", str(src))
+    service.group(project.id)
+
+    # 首评：全部成功（fail 集合为空）
+    service.assess_group(project.id, "g1")
+    g1 = service._photos.by_group(project.id, "g1")
+    success_photo = next(p for p in g1 if p.assess_status == "SUCCESS")
+
+    # 清除计数，对 SUCCESS 图发起单张重试
+    failing.scored.clear()
+    gd = service.retry_group(project.id, "g1", photo_id=success_photo.id)
+
+    # 该 SUCCESS 图不应触发重评
+    assert failing.scored == []
+    # 状态仍为 SUCCESS
+    after = next(p for p in gd.photos if p.id == success_photo.id)
+    assert after.assess_status == "SUCCESS"
