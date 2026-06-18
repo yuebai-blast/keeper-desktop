@@ -122,7 +122,7 @@ def test_create_copies_into_workspace_without_touching_source(svc, tmp_path):
     assert ws.is_dir() and len(list(ws.glob("*.jpg"))) == 4
     assert len(list(src.glob("*.jpg"))) == 4  # 源文件夹不动
     assert project.photo_count == 4
-    assert project.status == "grouping"
+    assert project.status == "GROUPING"
 
 
 def test_duplicate_name_rejected(svc, tmp_path):
@@ -176,11 +176,11 @@ def test_full_flow_to_completion(svc, tmp_path):
 
     detail = service.group(pid)
     assert len(detail.groups) == 2
-    assert detail.project.status == "selecting"
+    assert detail.project.status == "SELECTING"
 
     # 评测一组：初始化去留（每组第一张通过，其余未通过）
     gd = service.assess_group(pid, "g1")
-    assert gd.group.status == "assessed"
+    assert gd.group.status == "ASSESSED"
     assert sum(1 for p in gd.photos if p.selection == Selection.KEPT.value) == 1
     assert any(p.selection == Selection.DISCARDED.value for p in gd.photos)
     assert all(p.local_score == 70.0 for p in gd.photos)  # 层①落库
@@ -193,7 +193,7 @@ def test_full_flow_to_completion(svc, tmp_path):
     # 一键通过（会评测 g2 并全部确认）
     service.confirm_all(pid)
     after = service.get_detail(pid)
-    assert all(g.status == "confirmed" for g in after.groups)
+    assert all(g.status == "CONFIRMED" for g in after.groups)
 
     # 完成：归档「通过」到输出目录 + 删 workspace
     res = service.complete(pid)
@@ -202,7 +202,7 @@ def test_full_flow_to_completion(svc, tmp_path):
     assert res.kept_count == 2  # 两组各 1 张通过
     assert out.is_dir() and len(list(out.glob("*.jpg"))) == 2
     assert not (settings.workspace_dir / "流程").exists()  # workspace 已清理
-    assert service.get_detail(pid).project.status == "completed"
+    assert service.get_detail(pid).project.status == "COMPLETED"
 
 
 def test_recursive_import_uuid_rename_and_structured_restore(svc, tmp_path):

@@ -50,7 +50,7 @@ export const useProjectsStore = defineStore("projects", {
     allConfirmed: (s): boolean =>
       !!s.detail &&
       s.detail.groups.length > 0 &&
-      s.detail.groups.every((g) => g.status === "confirmed"),
+      s.detail.groups.every((g) => g.status === "CONFIRMED"),
   },
   actions: {
     /** 统一的错误处理：记录文案 + 503 时触发模型修复页。 */

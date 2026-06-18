@@ -36,8 +36,8 @@ const verdictClass = computed(() => VERDICT_CLASS[props.photo.llm_editable] ?? "
       <div class="row head">
         <span class="tag tag--llm">大模型</span>
         <span class="big">{{ Math.round(photo.llm_score!) }}</span>
-        <span v-if="photo.origin" class="tag" :class="photo.origin === 'passed' ? 'tag--pass' : 'tag--quota'">
-          {{ photo.origin === "passed" ? "达标通过" : "兜底补入" }}
+        <span v-if="photo.origin" class="tag" :class="photo.origin === 'PASSED' ? 'tag--pass' : 'tag--quota'">
+          {{ photo.origin === "PASSED" ? "达标通过" : "兜底补入" }}
         </span>
       </div>
       <p v-if="photo.llm_reason" class="reason">{{ photo.llm_reason }}</p>

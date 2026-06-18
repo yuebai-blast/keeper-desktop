@@ -18,18 +18,18 @@ const showSubmit = ref(false);
 onMounted(async () => {
   await store.loadProject(pid.value);
   // 恢复一个还停在「分组中」的项目：补跑分组
-  if (store.detail?.project.status === "grouping") await store.runGroup(pid.value);
+  if (store.detail?.project.status === "GROUPING") await store.runGroup(pid.value);
 });
 
-const STATUS: Record<string, string> = { pending: "待评测", assessed: "已评测", confirmed: "已确认" };
+const STATUS: Record<string, string> = { PENDING: "待评测", ASSESSED: "已评测", CONFIRMED: "已确认" };
 const confirmedCount = computed(
-  () => store.detail?.groups.filter((g) => g.status === "confirmed").length ?? 0,
+  () => store.detail?.groups.filter((g) => g.status === "CONFIRMED").length ?? 0,
 );
 const pendingGroups = computed(() =>
-  (store.detail?.groups ?? []).filter((g) => g.status !== "confirmed"),
+  (store.detail?.groups ?? []).filter((g) => g.status !== "CONFIRMED"),
 );
 const confirmedGroups = computed(() =>
-  (store.detail?.groups ?? []).filter((g) => g.status === "confirmed"),
+  (store.detail?.groups ?? []).filter((g) => g.status === "CONFIRMED"),
 );
 // 组序号沿用「在全部分组中的原始次序」，避免两区各自从 1 起造成同号歧义
 const indexOf = (gk: string) =>
@@ -74,7 +74,7 @@ async function doSubmit() {
             <span class="gname">组 {{ indexOf(g.group_key) + 1 }}</span>
             <span class="count">{{ g.photo_count }} 张</span>
             <span class="status" :class="`s-${g.status}`">{{ STATUS[g.status] ?? g.status }}</span>
-            <span v-if="g.status !== 'pending'" class="kept">通过 {{ g.kept_count }}</span>
+            <span v-if="g.status !== 'PENDING'" class="kept">通过 {{ g.kept_count }}</span>
           </div>
           <div class="sub">
             <span v-if="g.location">{{ g.location }}</span>

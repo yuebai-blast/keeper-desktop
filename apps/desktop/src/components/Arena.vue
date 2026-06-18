@@ -48,10 +48,10 @@ async function undo() {
 function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") return emit("close");
   if (done.value) return;
-  if (e.key === "ArrowLeft") choose("pick_left");
-  else if (e.key === "ArrowRight") choose("pick_right");
-  else if (e.key === "ArrowUp") choose("keep_both");
-  else if (e.key === "ArrowDown") choose("drop_both");
+  if (e.key === "ArrowLeft") choose("PICK_LEFT");
+  else if (e.key === "ArrowRight") choose("PICK_RIGHT");
+  else if (e.key === "ArrowUp") choose("KEEP_BOTH");
+  else if (e.key === "ArrowDown") choose("DROP_BOTH");
   else if (e.key === "u" || e.key === "U") undo();
 }
 
@@ -81,17 +81,17 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     <!-- 对决中 -->
     <template v-if="view && !done && left && right">
       <div class="duel">
-        <figure class="card" @click="choose('pick_left')">
+        <figure class="card" @click="choose('PICK_LEFT')">
           <img :src="thumbnailUrl(left.workspace_path, 1024)" alt="" />
           <figcaption>留左 <kbd>←</kbd></figcaption>
           <div class="info"><PhotoStats :photo="left" /></div>
         </figure>
         <div class="mid">
           <div class="vs"><span>VS</span></div>
-          <button class="btn btn--keep" @click="choose('keep_both')">都留 <kbd>↑</kbd></button>
-          <button class="btn btn--danger" @click="choose('drop_both')">都弃 <kbd>↓</kbd></button>
+          <button class="btn btn--keep" @click="choose('KEEP_BOTH')">都留 <kbd>↑</kbd></button>
+          <button class="btn btn--danger" @click="choose('DROP_BOTH')">都弃 <kbd>↓</kbd></button>
         </div>
-        <figure class="card" @click="choose('pick_right')">
+        <figure class="card" @click="choose('PICK_RIGHT')">
           <img :src="thumbnailUrl(right.workspace_path, 1024)" alt="" />
           <figcaption>留右 <kbd>→</kbd></figcaption>
           <div class="info"><PhotoStats :photo="right" /></div>

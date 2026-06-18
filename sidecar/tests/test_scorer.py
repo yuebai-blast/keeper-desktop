@@ -32,17 +32,17 @@ def test_extract_output_text_empty_output():
 
 
 def test_parse_plain_json():
-    assert parse_response('{"score": 88, "flaws": "无", "reason": "构图好"}') == (88.0, "构图好", "无", "ready", "")
+    assert parse_response('{"score": 88, "flaws": "无", "reason": "构图好"}') == (88.0, "构图好", "无", "READY", "")
 
 
 def test_parse_with_markdown_fence():
     out = parse_response('```json\n{"score": 70, "flaws": "碎发", "reason": "表情自然"}\n```')
-    assert out == (70.0, "表情自然", "碎发", "ready", "")
+    assert out == (70.0, "表情自然", "碎发", "READY", "")
 
 
 def test_parse_with_extra_text():
     out = parse_response('结果：{"score": 61, "flaws": "无", "reason": "瞬间不错"} 完')
-    assert out == (61.0, "瞬间不错", "无", "ready", "")
+    assert out == (61.0, "瞬间不错", "无", "READY", "")
 
 
 def test_parse_clamps_range():
@@ -62,18 +62,18 @@ def test_parse_malformed_raises():
 def test_parse_edit_fields_present():
     out = parse_response(
         '{"score": 82, "reason": "好", "flaws": "碎发",'
-        ' "editable": "worth_editing", "edit_advice": "磨皮去碎发即可"}'
+        ' "editable": "WORTH_EDITING", "edit_advice": "磨皮去碎发即可"}'
     )
-    assert out == (82.0, "好", "碎发", "worth_editing", "磨皮去碎发即可")
+    assert out == (82.0, "好", "碎发", "WORTH_EDITING", "磨皮去碎发即可")
 
 
 def test_parse_editable_illegal_falls_back_ready():
-    # 非法 editable 兜底为 ready
-    assert parse_response('{"score": 50, "reason": "", "editable": "胡来"}')[3] == "ready"
+    # 非法 editable 兜底为 READY
+    assert parse_response('{"score": 50, "reason": "", "editable": "胡来"}')[3] == "READY"
 
 
 def test_parse_editable_missing_defaults_ready():
-    assert parse_response('{"score": 50, "reason": ""}')[3] == "ready"
+    assert parse_response('{"score": 50, "reason": ""}')[3] == "READY"
 
 
 def test_parse_edit_advice_truncated_to_40():

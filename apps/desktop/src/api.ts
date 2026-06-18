@@ -213,7 +213,7 @@ export interface LocalScore {
 export interface SurvivorEntry {
   path: string;
   score: number;
-  origin: "passed" | "quota_fill" | string;
+  origin: "PASSED" | "QUOTA_FILL" | string;
 }
 
 export interface AssessResponse {
@@ -235,10 +235,10 @@ export function assessGroup(groupId: string, photos: string[]): Promise<AssessRe
 
 // ── 项目工作流（持久化在 sidecar，与 controller/project_controller 对齐）──────────
 
-export type ProjectStatus = "grouping" | "selecting" | "completed" | string;
-export type GroupStatus = "pending" | "assessed" | "confirmed" | string;
-export type Selection = "kept" | "discarded";
-export type PkOutcome = "pick_left" | "pick_right" | "keep_both" | "drop_both";
+export type ProjectStatus = "GROUPING" | "SELECTING" | "COMPLETED" | string;
+export type GroupStatus = "PENDING" | "ASSESSED" | "CONFIRMED" | string;
+export type Selection = "KEPT" | "DISCARDED";
+export type PkOutcome = "PICK_LEFT" | "PICK_RIGHT" | "KEEP_BOTH" | "DROP_BOTH";
 
 /** 源文件夹预览：数量、拍摄时间范围、拍摄地（尽力而为，可空）。 */
 export interface ProjectPreview {
@@ -292,9 +292,9 @@ export interface PhotoView {
   llm_score: number | null;
   llm_reason: string;
   llm_flaws: string;
-  llm_editable: "ready" | "worth_editing" | "not_worth" | "unfixable" | "";
+  llm_editable: "READY" | "WORTH_EDITING" | "NOT_WORTH" | "UNFIXABLE" | "";
   llm_edit_advice: string;
-  origin: "passed" | "quota_fill" | null;
+  origin: "PASSED" | "QUOTA_FILL" | null;
   selection: Selection | null;
   rescued: boolean;
   assess_error: string | null; // 层①/层②评测失败原因（null=正常）

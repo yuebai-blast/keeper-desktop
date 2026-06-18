@@ -104,7 +104,7 @@ def test_assess_wires_funnel_and_params(app, client):
     assert body["n"] == 3 and body["m"] == 5            # N=max(2,3)=3, M=ceil(4.5)=5
     # 达标 6 张 > M(5) → 6 张全过，按分降序，且都标 passed（分≥60）
     assert [s["path"] for s in body["survivors"]] == ["p0", "p1", "p2", "p3", "p4", "p5"]
-    assert all(s["origin"] == "passed" for s in body["survivors"])
+    assert all(s["origin"] == "PASSED" for s in body["survivors"])
     assert body["errors"] == []
 
 
@@ -147,7 +147,7 @@ def test_score_wires_funnel_and_assembles_pk(app, client, monkeypatch):
     # K=2 <= N=3 → 两张都进 PK；a 达标 passed、b<60 兜底
     assert len(body["pk"]) == 2
     by = {e["path"]: e["origin"] for e in body["pk"]}
-    assert by["a"] == "passed" and by["b"] == "quota_fill"
+    assert by["a"] == "PASSED" and by["b"] == "QUOTA_FILL"
 
 
 def test_score_scorer_unavailable_maps_to_biz_code(app, client, monkeypatch):

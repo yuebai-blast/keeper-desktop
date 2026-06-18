@@ -8,6 +8,6 @@ from enum import Enum
 class GroupStatus(str, Enum):
     """组状态机：未评测 → 已评测待用户 → 用户已确认。"""
 
-    PENDING = "pending"      # 尚未跑层①/层②评测
-    ASSESSED = "assessed"    # 已评测，等用户处理（PK/确认）
-    CONFIRMED = "confirmed"  # 用户已确认（标识，可反复改回）
+    PENDING = "PENDING"          # 尚未跑层①/层②评测
+    ASSESSED = "ASSESSED"        # 已评测，等用户处理（PK/确认）
+    CONFIRMED = "CONFIRMED"      # 用户已确认（标识，可反复改回）

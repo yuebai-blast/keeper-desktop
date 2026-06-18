@@ -19,12 +19,12 @@ const arenaRestart = ref(true);
 onMounted(() => store.loadGroup(pid.value, props.gk));
 
 const group = computed(() => store.group);
-const assessed = computed(() => group.value && group.value.group.status !== "pending");
+const assessed = computed(() => group.value && group.value.group.status !== "PENDING");
 const photos = computed<PhotoView[]>(() => group.value?.photos ?? []);
-const passed = computed(() => photos.value.filter((p) => p.selection === "kept").sort(byScoreDesc));
-const failed = computed(() => photos.value.filter((p) => p.selection === "discarded").sort(byScoreDesc));
+const passed = computed(() => photos.value.filter((p) => p.selection === "KEPT").sort(byScoreDesc));
+const failed = computed(() => photos.value.filter((p) => p.selection === "DISCARDED").sort(byScoreDesc));
 const pool = computed(() =>
-  photos.value.filter((p) => p.selection === "kept" || p.rescued).map((p) => p.workspace_path),
+  photos.value.filter((p) => p.selection === "KEPT" || p.rescued).map((p) => p.workspace_path),
 );
 const pkInProgress = computed(() => !!group.value?.pk && !group.value.pk.done);
 
@@ -40,10 +40,10 @@ async function onArenaClose() {
   await store.loadGroup(pid.value, props.gk); // 刷新通过/未通过区域
 }
 function toKept(p: PhotoView) {
-  store.toggleSelection(pid.value, props.gk, p.id, "kept");
+  store.toggleSelection(pid.value, props.gk, p.id, "KEPT");
 }
 function toDiscarded(p: PhotoView) {
-  store.toggleSelection(pid.value, props.gk, p.id, "discarded");
+  store.toggleSelection(pid.value, props.gk, p.id, "DISCARDED");
 }
 function rescue(p: PhotoView) {
   store.rescue(pid.value, props.gk, p.id, !p.rescued);
@@ -59,7 +59,7 @@ function rescue(p: PhotoView) {
         <span>{{ group.group.photo_count }} 张</span>
         <span v-if="group.group.location">· {{ group.group.location }}</span>
         <span class="status" :class="`s-${group.group.status}`">
-          {{ group.group.status === "confirmed" ? "已确认" : assessed ? "已评测" : "待评测" }}
+          {{ group.group.status === "CONFIRMED" ? "已确认" : assessed ? "已评测" : "待评测" }}
         </span>
       </p>
     </header>
@@ -86,7 +86,7 @@ function rescue(p: PhotoView) {
         <button v-if="pkInProgress" class="btn" @click="startPk(false)">继续上次 PK</button>
         <span class="grow" />
         <button class="btn btn--keep" @click="store.confirmGroup(pid, gk)">
-          {{ group.group.status === "confirmed" ? "✓ 已确认（可再改）" : "确认本组" }}
+          {{ group.group.status === "CONFIRMED" ? "✓ 已确认（可再改）" : "确认本组" }}
         </button>
       </div>
 

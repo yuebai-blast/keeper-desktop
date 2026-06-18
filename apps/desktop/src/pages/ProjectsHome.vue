@@ -18,7 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function open(id: number, status: string) {
-  router.push(status === "completed" ? `/projects/${id}/complete` : `/projects/${id}`);
+  router.push(status === "COMPLETED" ? `/projects/${id}/complete` : `/projects/${id}`);
 }
 
 // ── 删除确认 ──────────────────────────────────────────────────────────────
