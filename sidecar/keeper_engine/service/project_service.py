@@ -259,16 +259,12 @@ class ProjectService:
                     self._mark_failed(p, AssessStatus.LAYER1_FAILED, err.error)
         self._photos.update_many(photos)  # 先落层①，层②失败不白跑
 
-        # 重算 survivors（全组，失败/无分按 0；层①失败者即使进漏斗也不晋级）
+        # 重算 survivors（全组，失败/无分按 0；失败图按 0 分照常参与漏斗，不做特例排除）
         total = len(photos)
         m = self._params.compute_m(self._params.compute_n(total))
         local_scored = [LocalScore(path=p.workspace_path, score=p.local_score or 0.0) for p in photos]
         survivor_paths = {ls.path for ls, _ in self._funnel.apply_funnel(local_scored, m)}
-        survivors = [
-            p for p in photos
-            if p.workspace_path in survivor_paths
-            and p.assess_status != AssessStatus.LAYER1_FAILED.value
-        ]
+        survivors = [p for p in photos if p.workspace_path in survivor_paths]
 
         # 层②：survivor 里需打分（新晋/首次 SUCCESS 无 llm 分 + 目标里的层②失败）；层①失败者不调
         need_l2 = [
@@ -291,13 +287,12 @@ class ProjectService:
                 if (p := by_path.get(err.path)):
                     self._mark_failed(p, AssessStatus.LAYER2_FAILED, err.error)
 
-        # 重算 kept（全组 survivors 中层②成功打分的，失败者得分为 0 不参与排名）
+        # 重算 kept（全组 survivors，缺分/失败按 0 照常参与排名，不做特例排除）
         n = self._params.compute_n(total)
         llm_scored = [
             Score(path=p.workspace_path, score=p.llm_score or 0.0,
                   reason=p.llm_reason or "", flaws=p.llm_flaws or "")
             for p in survivors
-            if p.llm_score is not None  # 层②失败/未打分者不参与排名，直接淘汰
         ]
         pk_set = self._ranking.assemble_pk_set(group.group_key, llm_scored, n)
         kept_paths = {e.path for e in pk_set.entries}

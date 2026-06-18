@@ -251,9 +251,10 @@ def test_recursive_import_uuid_rename_and_structured_restore(svc, tmp_path):
 
 
 def test_layer1_failure_surfaces_and_persists_assess_error(tmp_path):
-    """层①单张失败：该张写入 assess_error 并透出到 PhotoView，且退出重读仍在。"""
+    """层①单张失败：该张写入 assess_error 并透出到 PhotoView，且退出重读仍在。
+    用 8 张：g1=4 张（3 好 + 1 失败），n=3，好图足够填满 kept，失败图（0 分）被比下去 DISCARDED。"""
     service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
-    src = _make_source(tmp_path, 4)  # g1 = 前两张
+    src = _make_source(tmp_path, 8)
     project = service.create("层一失败", str(src))
     service.group(project.id)
 
@@ -272,9 +273,10 @@ def test_layer1_failure_surfaces_and_persists_assess_error(tmp_path):
 
 
 def test_layer2_failure_surfaces_assess_error(tmp_path):
-    """层②单张失败：该 survivor 写入 assess_error，最终未通过。"""
+    """层②单张失败：该 survivor 写入 assess_error，最终未通过。
+    用 8 张：g1=4 张（3 好 + 1 层②失败），n=3，好图足够填满 kept，失败图（0 分）被比下去 DISCARDED。"""
     service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
-    src = _make_source(tmp_path, 4)
+    src = _make_source(tmp_path, 8)
     project = service.create("层二失败", str(src))
     service.group(project.id)
 
@@ -307,8 +309,9 @@ def test_manual_selection_override(svc, tmp_path):
 
 
 def test_layer1_failure_sets_status_and_zero_score_discarded(tmp_path):
+    # 用 8 张：g1=4 张（3 好 + 1 失败），n=3，好图足够填满 kept，失败图（0 分）排第 4 被淘汰
     service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
-    src = _make_source(tmp_path, 4)  # g1 = 前两张
+    src = _make_source(tmp_path, 8)
     project = service.create("L1", str(src))
     service.group(project.id)
     gd = service.assess_group(project.id, "g1")
@@ -321,8 +324,9 @@ def test_layer1_failure_sets_status_and_zero_score_discarded(tmp_path):
 
 
 def test_layer2_failure_sets_status(tmp_path):
+    # 用 8 张：g1=4 张（3 好 + 1 层②失败），n=3，好图足够填满 kept，失败图（0 分）排第 4 被淘汰
     service, _ = _build_service(tmp_path, FakeAssess(), FakeScoringLastFails())
-    src = _make_source(tmp_path, 4)
+    src = _make_source(tmp_path, 8)
     project = service.create("L2", str(src))
     service.group(project.id)
     gd = service.assess_group(project.id, "g1")
