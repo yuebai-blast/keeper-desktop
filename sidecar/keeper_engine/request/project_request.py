@@ -46,3 +46,15 @@ class PkChooseRequest(BaseModel):
     """对当前一对照片的一次选择。"""
 
     outcome: PkOutcome
+
+
+class RetryRequest(BaseModel):
+    """重试评测失败图。photo_id 为 None=该组全部未解决失败图；否则只重试该张。"""
+
+    photo_id: int | None = None
+
+
+class IgnoreFailuresRequest(BaseModel):
+    """忽略评测失败（解除对本组裁决的阻塞）。photo_id 为 None=全部失败图。"""
+
+    photo_id: int | None = None

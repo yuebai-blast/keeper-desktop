@@ -11,10 +11,12 @@ from fastapi import APIRouter, Depends
 
 from ..container import Container
 from ..request.project_request import (
+    IgnoreFailuresRequest,
     PkChooseRequest,
     PkStartRequest,
     ProjectCreateRequest,
     ProjectPreviewRequest,
+    RetryRequest,
     SelectionUpdateRequest,
 )
 from ..response.envelope import EnvelopeRoute
@@ -106,6 +108,29 @@ def assess_group(
 ) -> GroupDetailResponse:
     """层①需就绪（503）；层②缺 key/网络（502）。已评测则原样返回。"""
     return svc.assess_group(project_id, group_key)
+
+
+@router.post("/{project_id}/groups/{group_key}/retry", response_model=GroupDetailResponse)
+@inject
+def retry_group(
+    project_id: int,
+    group_key: str,
+    req: RetryRequest,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> GroupDetailResponse:
+    """重评失败图（层①需就绪→503；层②→502），再重算整组去留。"""
+    return svc.retry_group(project_id, group_key, req.photo_id)
+
+
+@router.post("/{project_id}/groups/{group_key}/ignore-failures", response_model=GroupDetailResponse)
+@inject
+def ignore_failures(
+    project_id: int,
+    group_key: str,
+    req: IgnoreFailuresRequest,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> GroupDetailResponse:
+    return svc.ignore_failures(project_id, group_key, req.photo_id)
 
 
 @router.post("/{project_id}/groups/{group_key}/selection", response_model=GroupDetailResponse)

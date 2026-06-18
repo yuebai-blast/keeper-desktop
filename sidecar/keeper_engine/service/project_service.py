@@ -325,6 +325,42 @@ class ProjectService:
         self._assess_and_rank(group, photos, targets=None)
         return self.get_group_detail(project_id, group_key)
 
+    def retry_group(
+        self, project_id: int, group_key: str, photo_id: int | None = None
+    ) -> GroupDetailResponse:
+        """重评失败图（单张 / 该组全部未解决失败），再按全组最新分重算去留。"""
+        group = self._require_group(project_id, group_key)
+        photos = self._photos.by_group(project_id, group_key)
+        failed = {
+            AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value
+        }
+        if photo_id is not None:
+            targets = [p for p in photos if p.id == photo_id]
+        else:
+            targets = [p for p in photos if p.assess_status in failed and not p.assess_error_ignored]
+        if targets:
+            self._assess_and_rank(group, photos, targets=targets)
+        return self.get_group_detail(project_id, group_key)
+
+    def ignore_failures(
+        self, project_id: int, group_key: str, photo_id: int | None = None
+    ) -> GroupDetailResponse:
+        """把失败图标记为已忽略（解阻塞），不重评、不重算去留。"""
+        self._require_group(project_id, group_key)
+        photos = self._photos.by_group(project_id, group_key)
+        failed = {
+            AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value
+        }
+        touched = [
+            p for p in photos
+            if p.assess_status in failed and (photo_id is None or p.id == photo_id)
+        ]
+        for p in touched:
+            p.assess_error_ignored = True
+        if touched:
+            self._photos.update_many(touched)
+        return self.get_group_detail(project_id, group_key)
+
     # ── 用户裁决 ──────────────────────────────────────────────────────────────
 
     def update_selection(

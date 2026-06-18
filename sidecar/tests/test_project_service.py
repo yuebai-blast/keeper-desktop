@@ -81,6 +81,26 @@ class FakeAssessLastFails:
                               n=3, m=5, errors=[PhotoError(path=bad, error="ValueError: 读图失败")])
 
 
+class CountingAssess:
+    """记录每次被评测的 path，验证「不重复评分」。可指定某些 path 失败。"""
+
+    def __init__(self, fail_paths=()):
+        self.fail = set(fail_paths)
+        self.scored: list[str] = []
+
+    def assess(self, req):
+        ok, errs = [], []
+        for ref in req.photos:
+            self.scored.append(ref.path)
+            if ref.path in self.fail:
+                errs.append(PhotoError(path=ref.path, error="ValueError: 读图失败"))
+            else:
+                ok.append(LocalScore(path=ref.path, score=70.0))
+        survivors = [SurvivorEntry(path=s.path, score=70.0, origin=PkOrigin.PASSED) for s in ok]
+        return AssessResponse(group_id=req.group_id, scores=ok, survivors=survivors,
+                              n=3, m=5, errors=errs)
+
+
 class FakeScoringLastFails:
     """survivors 里最后一张层②失败（记入 errors、不在 pk）；第一张通过。"""
 
@@ -336,3 +356,39 @@ def test_layer2_failure_sets_status(tmp_path):
     assert failed[0].local_score == 70.0
     assert failed[0].llm_score is None
     assert failed[0].selection == Selection.DISCARDED.value
+
+
+def test_retry_single_recovers_and_does_not_rescore_others(tmp_path):
+    # g1 = 前两张；第二张层①失败
+    failing = CountingAssess()
+    service, _ = _build_service(tmp_path, failing, FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("retry", str(src))
+    service.group(project.id)
+    # 锁定 g1 第二张 workspace 路径作为失败目标
+    g1 = service._photos.by_group(project.id, "g1")
+    bad = g1[-1]
+    failing.fail = {bad.workspace_path}
+
+    gd = service.assess_group(project.id, "g1")
+    assert any(p.assess_status == "LAYER1_FAILED" for p in gd.photos)
+    failing.fail = set()          # 这次重试会成功
+    failing.scored.clear()        # 只统计重试阶段的评分
+
+    gd2 = service.retry_group(project.id, "g1", photo_id=bad.id)
+    assert failing.scored == [bad.workspace_path]   # 只重评失败那张，别人不重评
+    recovered = next(p for p in gd2.photos if p.id == bad.id)
+    assert recovered.assess_status == "SUCCESS"
+    assert recovered.local_score == 70.0
+
+
+def test_ignore_failures_keeps_status_but_marks_ignored(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 4)
+    project = service.create("ign", str(src))
+    service.group(project.id)
+    service.assess_group(project.id, "g1")
+
+    gd = service.ignore_failures(project.id, "g1")
+    failed = [p for p in gd.photos if p.assess_status == "LAYER1_FAILED"]
+    assert failed and all(p.assess_error_ignored for p in failed)
