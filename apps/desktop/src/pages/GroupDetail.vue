@@ -27,6 +27,10 @@ const pool = computed(() =>
   photos.value.filter((p) => p.selection === "KEPT" || p.rescued).map((p) => p.workspace_path),
 );
 const pkInProgress = computed(() => !!group.value?.pk && !group.value.pk.done);
+const blocked = computed(() => (group.value?.group.failed_count ?? 0) > 0);
+function retryOne(p: PhotoView) { store.retry(pid.value, props.gk, p.id); }
+function ignoreOne(p: PhotoView) { store.ignoreFailures(pid.value, props.gk, p.id); }
+function retryAll() { store.retry(pid.value, props.gk); }
 
 async function assess() {
   await store.assess(pid.value, props.gk);
@@ -80,15 +84,19 @@ function rescue(p: PhotoView) {
     <!-- 已评测：通过 / 未通过 -->
     <template v-else>
       <div class="toolbar">
-        <button class="btn" :disabled="!pool.length" @click="startPk(true)">
+        <button class="btn" :disabled="!pool.length || blocked" @click="startPk(true)">
           开始 PK（{{ pool.length }} 张）
         </button>
-        <button v-if="pkInProgress" class="btn" @click="startPk(false)">继续上次 PK</button>
+        <button v-if="pkInProgress" class="btn" :disabled="blocked" @click="startPk(false)">继续上次 PK</button>
+        <button v-if="blocked" class="btn btn--ghost" :disabled="store.busy" @click="retryAll">
+          重试全部失败（{{ group.group.failed_count }}）
+        </button>
         <span class="grow" />
-        <button class="btn btn--keep" @click="store.confirmGroup(pid, gk)">
+        <button class="btn btn--keep" :disabled="blocked" @click="store.confirmGroup(pid, gk)">
           {{ group.group.status === "CONFIRMED" ? "✓ 已确认（可再改）" : "确认本组" }}
         </button>
       </div>
+      <p v-if="blocked" class="warn">还有 {{ group.group.failed_count }} 张未评测成功，请先重试或忽略后再裁决。</p>
 
       <h2 class="sect">通过 <small>{{ passed.length }}</small></h2>
       <p v-if="!passed.length" class="empty">暂无通过的照片。</p>
@@ -101,7 +109,7 @@ function rescue(p: PhotoView) {
           <div class="body">
             <PhotoStats :photo="p" />
             <div class="ops">
-              <button class="btn btn--ghost" @click="toDiscarded(p)">移到未通过</button>
+              <button class="btn btn--ghost" :disabled="blocked" @click="toDiscarded(p)">移到未通过</button>
             </div>
           </div>
         </article>
@@ -123,8 +131,14 @@ function rescue(p: PhotoView) {
             </p>
             <PhotoStats :photo="p" />
             <div class="ops">
-              <button class="btn btn--ghost" @click="rescue(p)">{{ p.rescued ? "取消救回" : "救回进 PK" }}</button>
-              <button class="btn btn--ghost" @click="toKept(p)">直接设为通过</button>
+              <template v-if="p.assess_error">
+                <button class="btn btn--ghost" :disabled="store.busy" @click="retryOne(p)">重试</button>
+                <button class="btn btn--ghost" :disabled="store.busy" @click="ignoreOne(p)">忽略</button>
+              </template>
+              <template v-else>
+                <button class="btn btn--ghost" :disabled="blocked" @click="rescue(p)">{{ p.rescued ? "取消救回" : "救回进 PK" }}</button>
+                <button class="btn btn--ghost" :disabled="blocked" @click="toKept(p)">直接设为通过</button>
+              </template>
             </div>
           </div>
         </article>
@@ -150,8 +164,8 @@ function rescue(p: PhotoView) {
 .ghead h1 { margin: 0 0 4px; font-family: var(--font-display); font-weight: 400; font-size: 24px; }
 .meta { margin: 0; display: flex; align-items: center; gap: 9px; color: var(--ink-faint); font-size: 12.5px; font-family: var(--font-mono); }
 .status { padding: 2px 9px; border-radius: 20px; border: 1px solid var(--line-strong); color: var(--ink-dim); font-size: 11px; }
-.status.s-confirmed { color: var(--green); border-color: var(--green); }
-.status.s-assessed { color: var(--amber-bright); border-color: var(--amber); }
+.status.s-CONFIRMED { color: var(--green); border-color: var(--green); }
+.status.s-ASSESSED { color: var(--amber-bright); border-color: var(--amber); }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; }
 
 .pre { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
@@ -203,4 +217,5 @@ function rescue(p: PhotoView) {
 }
 .body { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ops { display: flex; gap: 8px; margin-top: auto; }
+.warn { color: var(--amber-bright); font-family: var(--font-mono); font-size: 12.5px; margin: 0; }
 </style>

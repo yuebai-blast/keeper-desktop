@@ -46,6 +46,7 @@ export const BizCode = {
   NO_IMPORTABLE_IMAGES: 410005,
   INVALID_SOURCE_FOLDER: 410006,
   GROUPS_NOT_ALL_CONFIRMED: 410007,
+  GROUP_HAS_UNRESOLVED_FAILURES: 410008,
 } as const;
 
 /** 业务错误：携带业务码 code（供前端区分「模型未就绪 210001」以进修复页）。 */
@@ -274,6 +275,7 @@ export interface GroupSummary {
   status: GroupStatus;
   photo_count: number;
   kept_count: number;
+  failed_count: number; // 评测失败且未忽略的张数（>0 时本组裁决被锁）
   photo_paths: string[]; // 组内照片的 workspace 路径（供列表页缩略图预览）
   photo_names: string[]; // 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
 }
@@ -297,7 +299,9 @@ export interface PhotoView {
   origin: "PASSED" | "QUOTA_FILL" | null;
   selection: Selection | null;
   rescued: boolean;
-  assess_error: string | null; // 层①/层②评测失败原因（null=正常）
+  assess_status: "NOT_ASSESSED" | "SUCCESS" | "LAYER1_FAILED" | "LAYER2_FAILED" | string;
+  assess_error: string | null;
+  assess_error_ignored: boolean;
 }
 
 /** PK 进度视图。current 为当前一对的 workspace 路径。 */
@@ -363,6 +367,14 @@ export const getGroup = (id: number, gk: string) =>
 /** 对一组跑层①+层②评测并持久化（需就绪；层②可能 502）。 */
 export const assessProjectGroup = (id: number, gk: string) =>
   post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/assess`, {});
+
+/** 重试评测失败图（photoId 省略=该组全部未解决失败）。 */
+export const retryGroup = (id: number, gk: string, photoId?: number) =>
+  post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/retry`, { photo_id: photoId ?? null });
+
+/** 忽略评测失败（解除阻塞；photoId 省略=全部）。 */
+export const ignoreFailures = (id: number, gk: string, photoId?: number) =>
+  post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/ignore-failures`, { photo_id: photoId ?? null });
 
 /** 批量更新组内照片去留 / 救回标记。 */
 export const updateSelection = (id: number, gk: string, changes: SelectionChange[]) =>

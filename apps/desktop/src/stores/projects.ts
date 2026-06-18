@@ -11,11 +11,13 @@ import {
   getGroup,
   getProject,
   groupProject,
+  ignoreFailures,
   listProjects,
   pkChoose,
   pkStart,
   pkUndo,
   previewFolder,
+  retryGroup,
   updateSelection,
   type CompleteResult,
   type GroupDetail,
@@ -156,6 +158,26 @@ export const useProjectsStore = defineStore("projects", {
         this._fail(e);
       } finally {
         this.busy = false;
+      }
+    },
+
+    async retry(id: number, gk: string, photoId?: number) {
+      this.busy = true;
+      this.error = "";
+      try {
+        this.group = await retryGroup(id, gk, photoId);
+      } catch (e) {
+        this.error = e instanceof Error ? e.message : String(e);
+      } finally {
+        this.busy = false;
+      }
+    },
+    async ignoreFailures(id: number, gk: string, photoId?: number) {
+      this.error = "";
+      try {
+        this.group = await ignoreFailures(id, gk, photoId);
+      } catch (e) {
+        this.error = e instanceof Error ? e.message : String(e);
       }
     },
 
