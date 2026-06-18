@@ -86,3 +86,15 @@ def test_not_ready_blocks():
     with pytest.raises(BizException) as ei:
         _svc(FakePrescreen(), readiness=FakeReadiness(status="loading")).assess(_req(2))
     assert ei.value.biz == BizCode.MODEL_NOT_READY
+
+
+def test_on_progress_called_once_per_photo():
+    ticks = []
+    _svc(FakePrescreen()).assess(_req(5), on_progress=lambda: ticks.append(1))
+    assert len(ticks) == 5
+
+
+def test_on_progress_counts_failed_photos_too():
+    ticks = []
+    _svc(FakePrescreen(fail_paths={"img2"})).assess(_req(4), on_progress=lambda: ticks.append(1))
+    assert len(ticks) == 4  # 失败图也算「已处理」，照常推进进度
