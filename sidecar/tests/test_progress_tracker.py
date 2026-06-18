@@ -44,8 +44,10 @@ def test_tick_is_thread_safe():
         for _ in range(100):
             t.tick(1)
     threads = [threading.Thread(target=worker) for _ in range(10)]
-    for th in threads: th.start()
-    for th in threads: th.join()
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
     assert t.get(1).done == 1000
 
 
