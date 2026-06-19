@@ -1,7 +1,7 @@
-name: Release
+name: Desktop Release
 on:
   push:
-    tags: ["v*"]
+    tags: ["desktop-v*"]
 
 jobs:
   build:
