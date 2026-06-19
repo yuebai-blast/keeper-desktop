@@ -49,6 +49,24 @@ export const BizCode = {
   GROUP_HAS_UNRESOLVED_FAILURES: 410008,
 } as const;
 
+/** 评测进度阶段（镜像 sidecar enumeration/assess_phase.py，改任一端两边同步）。 */
+export const AssessPhase = {
+  IDLE: "IDLE",
+  LAYER1: "LAYER1",
+  LAYER2: "LAYER2",
+  DONE: "DONE",
+} as const;
+
+/** 评测实时进度：组级（group_index/group_count）+ 照片级（phase/done/total）。 */
+export interface AssessProgress {
+  phase: string; // 见 AssessPhase
+  done: number; // 当前阶段已处理张数
+  total: number; // 当前阶段总张数
+  group_index: number; // 当前第几组（1-based）；空闲为 0
+  group_count: number; // 本轮总组数；空闲为 0
+  group_key: string | null; // 当前正在评测的组 key
+}
+
 /** 业务错误：携带业务码 code（供前端区分「模型未就绪 210001」以进修复页）。 */
 export class ApiError extends Error {
   code: number;
@@ -377,6 +395,10 @@ export const getGroup = (id: number, gk: string) =>
 /** 对一组跑层①+层②评测并持久化（需就绪；层②可能 502）。 */
 export const assessProjectGroup = (id: number, gk: string) =>
   post<GroupDetail>(`/projects/${id}/groups/${enc(gk)}/assess`, {});
+
+/** 查询某项目当前评测进度（高频轮询，空闲返回 IDLE）。 */
+export const getAssessProgress = (id: number): Promise<AssessProgress> =>
+  get<AssessProgress>(`/projects/${id}/assess/progress`);
 
 /** 重试评测失败图（photoId 省略=该组全部未解决失败）。 */
 export const retryGroup = (id: number, gk: string, photoId?: number) =>

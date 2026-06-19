@@ -8,6 +8,7 @@ import {
   confirmGroup,
   createProject,
   deleteProject,
+  getAssessProgress,
   getGroup,
   getProject,
   groupProject,
@@ -19,6 +20,7 @@ import {
   previewFolder,
   retryGroup,
   updateSelection,
+  type AssessProgress,
   type CompleteResult,
   type GroupDetail,
   type PkOutcome,
@@ -37,6 +39,7 @@ interface ProjectsState {
   group: GroupDetail | null; // 当前打开的组详情
   busy: boolean;
   error: string;
+  progress: AssessProgress | null; // 评测实时进度（非评测时为 null）
 }
 
 export const useProjectsStore = defineStore("projects", {
@@ -46,6 +49,7 @@ export const useProjectsStore = defineStore("projects", {
     group: null,
     busy: false,
     error: "",
+    progress: null,
   }),
   getters: {
     /** 是否全部分组都已确认（可提交完成）。 */
@@ -60,6 +64,29 @@ export const useProjectsStore = defineStore("projects", {
       this.error = e instanceof Error ? e.message : String(e);
       useEngineStore().reportError(e);
       throw e;
+    },
+
+    /** 评测期间轮询进度：发起 run() 的同时按 400ms 拉进度，settle 后停轮询并清空。 */
+    async _withProgress<T>(id: number, run: () => Promise<T>): Promise<T> {
+      let stop = false;
+      const poll = async () => {
+        while (!stop) {
+          try {
+            this.progress = await getAssessProgress(id);
+          } catch {
+            /* 进度是尽力而为的旁路，拉取失败忽略 */
+          }
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      };
+      const polling = poll();
+      try {
+        return await run();
+      } finally {
+        stop = true;
+        await polling;
+        this.progress = null;
+      }
     },
 
     async loadProjects() {
@@ -153,7 +180,7 @@ export const useProjectsStore = defineStore("projects", {
       this.busy = true;
       this.error = "";
       try {
-        this.group = await assessProjectGroup(id, gk);
+        this.group = await this._withProgress(id, () => assessProjectGroup(id, gk));
       } catch (e) {
         this._fail(e);
       } finally {
@@ -165,7 +192,7 @@ export const useProjectsStore = defineStore("projects", {
       this.busy = true;
       this.error = "";
       try {
-        this.group = await retryGroup(id, gk, photoId);
+        this.group = await this._withProgress(id, () => retryGroup(id, gk, photoId));
       } catch (e) {
         this.error = e instanceof Error ? e.message : String(e);
       } finally {
@@ -212,7 +239,7 @@ export const useProjectsStore = defineStore("projects", {
       this.busy = true;
       this.error = "";
       try {
-        this.detail = await confirmAll(id);
+        this.detail = await this._withProgress(id, () => confirmAll(id));
       } catch (e) {
         this._fail(e);
       } finally {
