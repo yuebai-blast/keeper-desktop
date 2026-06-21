@@ -16,6 +16,12 @@
     // 例如 macOS arm64 上找 binaries/keeper-sidecar-aarch64-apple-darwin。
     // 该文件由 `mise run bundle-sidecar`（PyInstaller 冻结）+ `mise run stage-sidecar`（改名落位）产出。
     // 安装后，Rust 壳通过 app.shell().sidecar("keeper-sidecar") 拉起它（见 src/lib.rs）。
-    "externalBin": ["binaries/keeper-sidecar"]
+    "externalBin": ["binaries/keeper-sidecar"],
+
+    // 打包时额外产出「更新包」制品：macOS 的 .app.tar.gz（+ .sig 签名）、Windows 的 -setup.exe（+ .sig）。
+    // 这些是 updater 下载替换用的产物，与给用户首装的 .dmg/.exe 并存。
+    // ⚠️ 一旦开启，`tauri build`（含 `mise run package`）会要求环境变量 TAURI_SIGNING_PRIVATE_KEY
+    //（及 _PASSWORD）来签名，否则构建失败。本地打包前先 `mise run gen-update-keys` 生成密钥并 export。
+    "createUpdaterArtifacts": true
   }
 }

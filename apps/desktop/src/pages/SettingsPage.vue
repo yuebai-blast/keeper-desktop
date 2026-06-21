@@ -3,8 +3,20 @@
 // 「能连上才给保存」：先测试连接（key+模型实调一次），成功后才允许保存；改任一字段需重测。
 // 自用版让用户填自己的 key 直连大模型；商业版构建移除此页（key 在云端中转，不下发客户端）。
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 import { nextTick, onMounted, ref, watch } from "vue";
 import { getSettings, listVisionModels, saveSettings, testSettings, type VisionModel } from "../api";
+import { useUpdaterStore } from "../stores/updater";
+
+// 在线升级：手动检查（启动静默检查在 App.vue）。结果/进度复用 updater store，与顶栏横幅联动。
+const updater = useUpdaterStore();
+const appVersion = ref("");
+const checkedOnce = ref(false); // 是否手动点过检查（用于区分「未查」与「已是最新」）
+
+async function checkUpdate() {
+  checkedOnce.value = true;
+  await updater.check(false);
+}
 
 // 控制台指引链接（用系统浏览器打开）
 const ARK_APIKEY_URL = "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey";
@@ -43,6 +55,11 @@ watch([arkKey, arkModel, arkBaseUrl], () => {
 });
 
 onMounted(async () => {
+  try {
+    appVersion.value = await getVersion();
+  } catch {
+    appVersion.value = "";
+  }
   try {
     const s = await getSettings();
     suppress = true;
@@ -230,6 +247,26 @@ async function save() {
           {{ saving ? "正在保存…" : "保存" }}
         </button>
       </div>
+
+      <!-- ───── 在线升级 ───── -->
+      <section class="update">
+        <h2>版本与更新</h2>
+        <div class="ver">
+          <span class="muted">当前版本</span>
+          <code>v{{ appVersion || "—" }}</code>
+          <span class="grow" />
+          <button class="btn" :disabled="updater.busy" @click="checkUpdate">
+            {{ updater.phase === "checking" ? "检查中…" : "检查更新" }}
+          </button>
+        </div>
+        <!-- 手动检查的结果反馈（横幅负责「发现新版/下载/重启」的操作，这里只给文字状态） -->
+        <p v-if="updater.phase === 'error'" class="err">检查更新失败：{{ updater.error }}</p>
+        <p v-else-if="updater.phase === 'available'" class="ok">发现新版本 v{{ updater.version }}，见顶部提示。</p>
+        <p v-else-if="updater.phase === 'downloading'" class="muted">正在下载更新… {{ updater.percent }}%</p>
+        <p v-else-if="updater.phase === 'ready'" class="ok">新版本已就绪，重启生效。</p>
+        <p v-else-if="checkedOnce" class="ok">已是最新版本 ✓</p>
+        <p v-else class="muted">应用启动时会自动检查；也可点此手动检查。</p>
+      </section>
     </template>
   </section>
 </template>
@@ -282,4 +319,9 @@ select:focus { outline: none; border-color: var(--amber); }
 .ok { color: var(--amber-bright); font-size: 13px; margin: 0; }
 .btns { display: flex; align-items: center; gap: 12px; }
 .btn.lg { padding: 12px 24px; font-size: 14.5px; }
+.update { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 20px; margin-top: 4px; }
+.update h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 18px; }
+.ver { display: flex; align-items: center; gap: 10px; }
+.ver code { font-family: var(--font-mono); font-size: 13px; color: var(--ink-dim); }
+.ver .grow { flex: 1; }
 </style>

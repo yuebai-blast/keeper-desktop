@@ -78,6 +78,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        // 在线升级：前端经 @tauri-apps/plugin-updater 查最新版/下载/校验/安装，
+        // 装好后经 plugin-process 的 relaunch 重启生效。两者均为桌面端能力。
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // dev 下不生成 token（前端取到空串=不发；mise run sidecar 也没 KEEPER_AUTH_TOKEN=不鉴权）。
             let token = if cfg!(debug_assertions) {

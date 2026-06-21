@@ -79,6 +79,13 @@ mise run stage-sidecar
 pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
 """
 
+[tasks.gen-update-keys]
+description = "生成在线升级用的签名密钥对（一次性）：私钥→CI secret，公钥→tauri.conf.json5 的 plugins.updater.pubkey"
+dir = "apps/desktop"
+# 产出 ~/.tauri/keeper-updater.key（私钥，妥善保管/进 CI secret）与 keeper-updater.key.pub（公钥，粘进 tauri.conf）。
+# 会提示设置密码：设了的话私钥密码即 CI secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
+run = "pnpm tauri signer generate -w ~/.tauri/keeper-updater.key"
+
 [tasks.site-install]
 description = "安装官网（apps/website）前端依赖"
 dir = "apps/website"

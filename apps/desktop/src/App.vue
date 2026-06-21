@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import SplashView from "./components/SplashView.vue";
+import UpdateBanner from "./components/UpdateBanner.vue";
 import { useEngineStore } from "./stores/engine";
+import { useUpdaterStore } from "./stores/updater";
 
 const engine = useEngineStore();
+const updater = useUpdaterStore();
 
 // 用户是否已穿过加载页进入应用（加载页 ready 后自动/点按钮置位）
 const entered = ref(false);
@@ -44,6 +47,8 @@ watch(
 onMounted(async () => {
   await engine.refresh();
   startPoll();
+  // 启动静默检查更新：失败/无更新都不打扰用户（仅有新版才弹横幅）。不 await，不阻塞主流程。
+  void updater.check(true);
 });
 onUnmounted(stopPoll);
 </script>
@@ -60,6 +65,7 @@ onUnmounted(stopPoll);
       <span class="grow" />
       <span class="ready"><i /> 就绪</span>
     </header>
+    <UpdateBanner />
     <RouterView />
   </div>
 </template>
