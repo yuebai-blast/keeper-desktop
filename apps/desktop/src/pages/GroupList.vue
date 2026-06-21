@@ -144,10 +144,10 @@ async function doSubmit() {
     >
       <p>此操作会：</p>
       <ul>
-        <li>对<strong>尚未评测</strong>的分组自动运行本地评分（层①）与<strong>在线大模型评分</strong>（层②）；</li>
-        <li>按大模型的选择把<strong>所有分组</strong>标记为「已确认」。</li>
+        <li>对<strong>尚未评测</strong>的分组自动运行<strong>本地初筛</strong>与<strong>AI 精评</strong>；</li>
+        <li>按 AI 精评的选择把<strong>所有分组</strong>标记为「已确认」。</li>
       </ul>
-      <p>其中在线大模型评分会调用外部服务，<strong>可能产生费用</strong>。标记后仍可逐组改回，但需重新逐组检查。</p>
+      <p>其中 AI 精评会调用外部服务，<strong>可能产生费用</strong>。标记后仍可逐组改回，但需重新逐组检查。</p>
     </ConfirmDialog>
 
     <ConfirmDialog

@@ -167,7 +167,7 @@ async function save() {
           placeholder="例如：ep-xxxxxxxx 或具体模型名"
           :disabled="saving"
         />
-        <small>火山方舟「接入点」id 或模型名，用于层②照片打分。可手填，或用下方「拉取视觉模型」辅助选。</small>
+        <small>火山方舟「接入点」id 或模型名，用于 AI 精评给照片打分。可手填，或用下方「拉取视觉模型」辅助选。</small>
       </label>
 
       <details class="helper">

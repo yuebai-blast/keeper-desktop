@@ -53,8 +53,8 @@ const zh: Copy = {
     kicker: "工作流", title: "四步，从一堆连拍到精选", lede: "每层漏斗规则相同：≥60 分全进下一层，不足保底数则按分补够，绝不替你砍掉够好的。",
     steps: [
       { n: "01", title: "分组", body: "相似连拍按语义 + 时间 + 人脸自动聚成「同一个瞬间」。" },
-      { n: "02", title: "层① 本地模型", body: "按技术质量打分：锐度 / 曝光 / 人脸 / 美学，闭眼脱焦扣分。" },
-      { n: "03", title: "层② 在线大模型", body: "按审美 / 表情 / 构图 / 语义打分，给出可解释的去留理由。" },
+      { n: "02", title: "本地初筛", body: "在你电脑上按技术质量打分：锐度 / 曝光 / 人脸 / 美学，闭眼脱焦扣分。" },
+      { n: "03", title: "AI 精评", body: "联网用 AI 按审美 / 表情 / 构图 / 语义打分，给出可解释的去留理由。" },
       { n: "04", title: "A/B 擂台终选", body: "你在擂台上两两对决，做最终裁决——留谁你说了算。" },
     ],
   },
@@ -75,9 +75,9 @@ const zh: Copy = {
     reqs: [
       "macOS 11+（Apple 芯片 / Intel）或 Windows 10+（x64）",
       "首次启动联网，一次性下载约 1.6 GB 本地 AI 模型到 ~/.keeper/models，之后完全离线",
-      "层②大模型评分需自备火山方舟（Ark）API key（可在应用内录入）",
+      "AI 精评需自备火山方舟（Ark）API key（可在应用内录入）",
     ],
-    shotAlt: ["组详情：两层评分与去留", "A/B 擂台：两两对决终选"],
+    shotAlt: ["组详情：本地 + AI 评分与去留", "A/B 擂台：两两对决终选"],
   },
   download: {
     kicker: "下载", title: "选择你的平台", lede: "免费下载，安装包托管在 GitHub Releases。",
@@ -96,9 +96,9 @@ const zh: Copy = {
     items: [
       { q: "Keeper 免费吗？", a: "当前 MVP 版本免费。商业版的云端中转/计费是后续计划。" },
       { q: "我的照片会被上传吗？", a: "原图永远不离开你的电脑。只有用于大模型打分的低清预览会临时上传、用完即焚；拍摄地反查只发 GPS 坐标。" },
-      { q: "需要联网吗？", a: "首次启动需联网下载本地模型（约 1.6 GB）。之后本地流程完全离线；只有层②大模型评分需要联网。" },
+      { q: "需要联网吗？", a: "首次启动需联网下载本地模型（约 1.6 GB）。之后本地流程完全离线；只有 AI 精评需要联网。" },
       { q: "未签名安装包怎么放行？", a: "macOS 到「隐私与安全性」点「仍要打开」，或用 xattr 去隔离属性；Windows 在 SmartScreen 点「仍要运行」。" },
-      { q: "需要 API key 吗？", a: "层②大模型评分需要火山方舟（Ark）API key，在应用「设置」页录入，密钥只存本地、绝不入库。" },
+      { q: "需要 API key 吗？", a: "AI 精评需要火山方舟（Ark）API key，在应用「设置」页录入，密钥只存本地、绝不入库。" },
       { q: "可以商用吗？", a: "当前内置的人脸识别模型仅供非商用研究，商用前需替换或获授权。" },
     ],
   },
@@ -136,8 +136,8 @@ const en: Copy = {
     kicker: "How it works", title: "Four steps, from bursts to picks", lede: "Each funnel uses the same rule: everything ≥60 passes; if short of the quota, top up by score — never cutting anything good enough.",
     steps: [
       { n: "01", title: "Group", body: "Similar bursts are clustered into one 'moment' by semantics, time and faces." },
-      { n: "02", title: "Stage ① Local model", body: "Technical scoring: sharpness, exposure, faces, aesthetics; penalties for closed eyes / out-of-focus." },
-      { n: "03", title: "Stage ② Cloud LLM", body: "Scored on aesthetics, expression, composition and semantics, with explainable keep/cut reasons." },
+      { n: "02", title: "Local pre-screen", body: "On your machine: technical scoring — sharpness, exposure, faces, aesthetics; penalties for closed eyes / out-of-focus." },
+      { n: "03", title: "AI review", body: "Online AI scores aesthetics, expression, composition and semantics, with explainable keep/cut reasons." },
       { n: "04", title: "A/B arena", body: "You decide head-to-head in the arena — the final cut is always yours." },
     ],
   },
@@ -158,9 +158,9 @@ const en: Copy = {
     reqs: [
       "macOS 11+ (Apple Silicon / Intel) or Windows 10+ (x64)",
       "First launch downloads ~1.6 GB of local AI models to ~/.keeper/models, then runs fully offline",
-      "Stage ② scoring needs your own Volcano Ark API key (entered in-app)",
+      "AI review needs your own Volcano Ark API key (entered in-app)",
     ],
-    shotAlt: ["Group detail: two-stage scores and verdicts", "A/B arena: head-to-head final pick"],
+    shotAlt: ["Group detail: local + AI scores and verdicts", "A/B arena: head-to-head final pick"],
   },
   download: {
     kicker: "Download", title: "Pick your platform", lede: "Free download, installers hosted on GitHub Releases.",
@@ -179,9 +179,9 @@ const en: Copy = {
     items: [
       { q: "Is Keeper free?", a: "The current MVP is free. A commercial cloud-relay/billing version is planned." },
       { q: "Are my photos uploaded?", a: "Originals never leave your machine. Only low-res previews for LLM scoring are uploaded then discarded; geocoding sends GPS coordinates only." },
-      { q: "Do I need internet?", a: "First launch downloads local models (~1.6 GB). After that the local pipeline is fully offline; only Stage ② LLM scoring needs the network." },
+      { q: "Do I need internet?", a: "First launch downloads local models (~1.6 GB). After that the local pipeline is fully offline; only the AI review needs the network." },
       { q: "How do I open an unsigned build?", a: "macOS: 'Open Anyway' in Privacy & Security, or strip the quarantine attr with xattr. Windows: 'Run anyway' in SmartScreen." },
-      { q: "Do I need an API key?", a: "Stage ② scoring needs a Volcano Ark API key, entered in Settings; it's stored locally and never committed." },
+      { q: "Do I need an API key?", a: "The AI review needs a Volcano Ark API key, entered in Settings; it's stored locally and never committed." },
       { q: "Can I use it commercially?", a: "The bundled face-recognition model is for non-commercial research only; replace or license it before commercial use." },
     ],
   },
