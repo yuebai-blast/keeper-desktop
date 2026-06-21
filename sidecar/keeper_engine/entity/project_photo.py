@@ -82,6 +82,10 @@ class ProjectPhoto(SQLModel, table=True):
         default="",
         sa_column_kwargs={"comment": "层② 修图建议：能修怎么修 / 修不了或不划算的原因"},
     )
+    llm_is_junk: bool = Field(
+        default=False,
+        sa_column_kwargs={"comment": "层②判定是否为非摄影杂图/垃圾图（纯标记，不自动改去留）"},
+    )
 
     # 评测状态机（驱动重试与失败阻塞）；与 assess_error/assess_error_ignored 同步维护
     assess_status: str = Field(

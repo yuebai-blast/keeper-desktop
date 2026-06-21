@@ -230,6 +230,7 @@ class ProjectService:
         p.llm_flaws = sc.flaws
         p.llm_editable = sc.editable
         p.llm_edit_advice = sc.edit_advice
+        p.llm_is_junk = sc.is_junk
         p.assess_status = AssessStatus.SUCCESS.value
         p.assess_error = None
         p.assess_error_ignored = False

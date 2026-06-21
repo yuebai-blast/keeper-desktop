@@ -76,6 +76,7 @@ class PhotoView(BaseModel):
     llm_flaws: str = ""
     llm_editable: str = ""
     llm_edit_advice: str = ""
+    llm_is_junk: bool = False
     origin: str | None = None
     selection: str | None = None
     rescued: bool = False

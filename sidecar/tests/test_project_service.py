@@ -63,12 +63,12 @@ class FakeAssess:
 
 
 class FakeScoring:
-    """层②：第一张给高分（≥60），其余给低分（<60）；漏斗保底数 n 决定最终通过数。
+    """层②：第一张给高分（≥60）并标为杂图，其余给低分（<60）；漏斗保底数 n 决定最终通过数。
     小组（size≤n）时所有照片仍全通（巧妇难为无米之炊），需用较大源（size>n）测淘汰。"""
 
     def score(self, req, on_progress=None) -> ScoreResponse:
         scores = [
-            Score(path=p, score=80.0 if i == 0 else 50.0, reason="好", flaws="")
+            Score(path=p, score=80.0 if i == 0 else 50.0, reason="好", flaws="", is_junk=(i == 0))
             for i, p in enumerate(req.photos)
         ]
         for _ in req.photos:
@@ -326,6 +326,19 @@ def test_layer2_failure_surfaces_assess_error(tmp_path):
     assert failed[0].local_score == 70.0  # 层①有分
     assert failed[0].llm_score is None     # 层②失败没有分
     assert failed[0].selection == Selection.DISCARDED.value
+
+
+def test_llm_is_junk_persisted(svc, tmp_path):
+    """FakeScoring 把每组第一张标为杂图；该张应落库为 llm_is_junk=True，其余 False。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 6)
+    pid = service.create("p", str(src)).id
+    service.group(pid)
+    gd = service.assess_group(pid, "g1")
+    # FakeScoring 把每组第一张标为杂图；该张应落库为 llm_is_junk=True，其余 False
+    junk = [p for p in gd.photos if p.llm_is_junk]
+    assert len(junk) == 1
+    assert all(not p.llm_is_junk for p in gd.photos if p.id != junk[0].id)
 
 
 def test_manual_selection_override(svc, tmp_path):
