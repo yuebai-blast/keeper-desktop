@@ -57,6 +57,8 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 
 服务只绑 `127.0.0.1`，默认端口 **8761**（`mise run sidecar -- --port` 改），前端经 `VITE_SIDECAR_URL` 覆盖基址。CORS 仅放行 localhost / `tauri://localhost`。端点定义在 `sidecar/keeper_engine/controller/*`（经 DI 注入 service），前端客户端镜像在 `apps/desktop/src/api.ts`——**改任一端的请求/响应结构，两边都要同步**。
 
+**鉴权约定**：prod 模式下 Tauri 壳启动时生成随机 token 并经 `KEEPER_AUTH_TOKEN` env 注入 sidecar；所有端点均需鉴权——JSON 端点从请求头 `X-Keeper-Token` 读取，`/thumbnail` 从 query 参数 `token` 读取；鉴权失败返回纯 HTTP 401（不包 ApiResponse），前端收到 401 后合成 `ApiError(110003, "AUTH_FAILED")`。dev/独立运行时 `KEEPER_AUTH_TOKEN` 留空则不鉴权，方便本地调试。此外 `/thumbnail` 仅放行 `workspace_dir` 内的路径，请求超出范围返回 404。
+
 **统一响应包装（全局规范）**：所有 JSON 端点**恒返回 HTTP 200**，业务成败由响应体 `ApiResponse{code,data,msg}` 的 `code` 表达（`0`=成功）。成功响应由各 controller 的 `EnvelopeRoute`（`response/envelope.py`）自动包成 `{code:0,data:<原返回>,msg:null}`，controller 代码不变；异常由 `app.py` 注册的处理器按 `BizCode`（`enumeration/biz_code.py`）统一翻译成 `{code,data:null,msg}`。业务码为 6 位、前两位分段（`11`通用/`21`本地模型/`31`大模型/`41`项目工作流）。**例外**：`GET /thumbnail` 返回二进制 JPEG，豁免包装（解码失败仍用原生 404）。前端 `api.ts` 的 `get/post` 自动解包 `data`，`code!==0` 抛 `ApiError(code,msg)`；`BizCode` 常量在两端各存一份镜像，**改任一端两边同步**。下表「门禁」列写的是失败时返回的业务码。
 
 | 端点 | 作用 | 门禁（失败业务码） |
@@ -109,7 +111,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - `service/project_service.py` — **项目工作流编排核心**：预览/建项目/分组/评测/裁决/确认/完成，复用上面所有引擎 service，把结果落库（持久化权威）。`service/pk_service.py` — PK 擂台状态机（四结局，状态存 `PkState`，每步可恢复），终止时把去留写回 `ProjectPhoto.selection`。`service/workspace_service.py` — workspace 文件操作：**递归**扫描源图、复制副本时改名为 `{uuid}{原扩展名}`（扁平、回避跨目录/异扩展名重名）、完成时按相对路径 `restore_tree` **还原原始目录树+原名**、清理。**只动副本与输出目录，不碰源**。
 - 持久化层（sqlite）：`config/database.py` 共享 engine（全部 mapper 复用，`create_all` 在 app 启动时建表）；`entity/*` 实体（`Project`/`ProjectPhoto`/`PhotoGroup`/`PkState`/`GeocodeCache`/`ModelModule`）+ `mapper/*` 数据访问。层②/层①评分明细以 JSON 列就地存在 `ProjectPhoto`。
 - `client/geocode_client.py` — 拍摄地在线反查地名（只发 GPS 坐标、不发照片，默认 OSM Nominatim，结果缓存到 `GeocodeCache`）；GPS 读取在 `util/imaging.read_gps`。
-- `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存固定到 `~/.keeper/models`。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
+- `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存目录取 `KEEPER_MODELS_DIR`（prod 为 `app_cache_dir/models`，dev 默认 `{KEEPER_HOME}/models`）。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
 - `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
 桌面端：扫描、读 EXIF、复制副本、归档、删除等**文件操作已下沉到 sidecar**（Python，统一管 `~/.keeper`）。Rust 壳（`src-tauri/src/lib.rs`）只保留需要原生 GUI 的命令：`pick_folder`（目录选择对话框）、`open_path`（打开输出目录）、`exit_app`。前端用 **vue-router** 多页流程（`pages/*`：项目主页 / 新建 / 分组列表 / 组详情 / 完成），状态在 Pinia（`engine` 连接态、`projects` 项目/组/PK——权威在 sidecar，前端每步操作后用服务端返回刷新）；`api.ts` 镜像上面两类端点。
@@ -123,7 +125,9 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | 变量 | 作用 |
 | :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
-| `KEEPER_HOME` | 统一数据根（默认 `~/.keeper`）：下含 `models/`、`workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key`、`volc_ak`/`volc_sk`（管理面 AK/SK，0600） |
+| `KEEPER_HOME` | 统一数据根：prod 由 Tauri 壳注入为 OS 约定目录（macOS `~/Library/Application Support/com.keeper.app`），dev 未注入时回落 `~/.keeper`。下含 `workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key`、`volc_ak`/`volc_sk`（管理面 AK/SK，0600） |
+| `KEEPER_MODELS_DIR` | 模型缓存目录；prod 由 Tauri 注入为 `app_cache_dir/models`（大缓存不进用户备份），dev 默认 `{KEEPER_HOME}/models` |
+| `KEEPER_AUTH_TOKEN` | sidecar HTTP 鉴权 token；prod 由 Tauri 启动时生成并经 env 注入，dev/独立运行留空=不鉴权 |
 | `KEEPER_OUTPUT_ROOT` | 选片完成输出根（默认 `~/Pictures/Keeper`），最终输出到 `{此}/{项目名}` |
 | `KEEPER_GEOCODE_ENABLED` / `KEEPER_GEOCODE_URL` | 拍摄地反查开关 / 服务地址（默认 OSM Nominatim，只发坐标） |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
