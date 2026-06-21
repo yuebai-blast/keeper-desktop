@@ -1,9 +1,9 @@
 // Keeper 推理 sidecar 的 HTTP 客户端。
 // 本机服务，默认 127.0.0.1:8761（mise run sidecar 启动）。可由 VITE_SIDECAR_URL 覆盖。
 
-const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
-
 import { invoke } from "@tauri-apps/api/core";
+
+const BASE = import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:8761";
 
 // sidecar 鉴权 token（启动时经 initAuth 从 Rust 取一次）。空串=不发（dev / 非 Tauri 环境）。
 let authToken = "";

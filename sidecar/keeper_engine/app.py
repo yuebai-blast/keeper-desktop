@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .container import Container
-from .middleware.auth import AuthMiddleware
 from .controller import (
     assess_controller,
     group_controller,
@@ -22,6 +21,7 @@ from .controller import (
     settings_controller,
     thumbnail_controller,
 )
+from .middleware.auth import AuthMiddleware
 from .response.envelope import install_exception_handlers
 
 

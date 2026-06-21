@@ -16,6 +16,14 @@ from starlette.responses import PlainTextResponse, Response
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
+    """鉴权中间件。
+
+    注意：BaseHTTPMiddleware 会在内部缓冲整个响应体，再转交给调用方。当前所有端点均返回普通
+    JSON/PlainText 响应，无 StreamingResponse，故此实现可行。若将来有端点需要返回
+    StreamingResponse（如大文件流式下载），BaseHTTPMiddleware 会破坏流式语义，需改为纯
+    ASGI 中间件（直接实现 `async def __call__(scope, receive, send)`）。
+    """
+
     def __init__(self, app, token: str) -> None:  # noqa: ANN001
         super().__init__(app)
         self._token = token

@@ -80,7 +80,7 @@ mise run localscore -- /path/to/img.jpg   # 对单张图跑层①评分并打印
 | 端点 | 作用 | 门禁 |
 | :-- | :-- | :-- |
 | `POST /projects/preview` | 扫描源文件夹：数量 / 拍摄时间范围 / 拍摄地（不建项目） | — |
-| `POST /projects` | 建项目 + **递归**收图、复制副本到 `~/.keeper/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→`PROJECT_NAME_DUPLICATE` |
+| `POST /projects` | 建项目 + **递归**收图、复制副本到 `{KEEPER_HOME}/workspace/{名}` 并改名为随机 UUID（扁平、回避重名；不动源）。DB 存原始相对路径，完成时据此还原原始目录树+原名 | 名重复→`PROJECT_NAME_DUPLICATE` |
 | `GET /projects` · `GET /projects/{id}` | 项目列表 / 项目详情（含各组摘要） | 不存在→`PROJECT_NOT_FOUND` |
 | `DELETE /projects/{id}` | 删项目：清 workspace 副本 + 全部 DB 资源（照片/组/PK/项目行）；不动源与已完成项目输出目录 | 不存在→`PROJECT_NOT_FOUND` |
 | `POST /projects/{id}/group` | 分组并落库（写 group_key + 建组、聚合拍摄地/时间） | 需 `ready`→`MODEL_NOT_READY` |
@@ -114,13 +114,13 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - `client/vision_client.py` — 本地模型懒加载（DINOv2 / InsightFace / pyiqa），DI Singleton。模型缓存目录取 `KEEPER_MODELS_DIR`（prod 为 `app_cache_dir/models`，dev 默认 `{KEEPER_HOME}/models`）。层①只用检测+关键点；分组另用「检测+识别」实例取人脸身份。⚠️ 识别模型（ArcFace，`buffalo_l`）仅限非商用研究，**商用前需替换或授权**（对整个 `buffalo_l` 包适用，含层①的检测/关键点）。
 - `client/scorer.py` — `Scorer` 协议 + `LocalDirectScorer`（直连火山 Ark），提示词在 `client/prompts/layer2_score.md`（不改代码即可迭代）。**容器里 `scorer` 一行绑定即可切 `CloudRelayScorer`，业务流程不动。**
 
-桌面端：扫描、读 EXIF、复制副本、归档、删除等**文件操作已下沉到 sidecar**（Python，统一管 `~/.keeper`）。Rust 壳（`src-tauri/src/lib.rs`）只保留需要原生 GUI 的命令：`pick_folder`（目录选择对话框）、`open_path`（打开输出目录）、`exit_app`。前端用 **vue-router** 多页流程（`pages/*`：项目主页 / 新建 / 分组列表 / 组详情 / 完成），状态在 Pinia（`engine` 连接态、`projects` 项目/组/PK——权威在 sidecar，前端每步操作后用服务端返回刷新）；`api.ts` 镜像上面两类端点。
+桌面端：扫描、读 EXIF、复制副本、归档、删除等**文件操作已下沉到 sidecar**（Python，统一管 `{KEEPER_HOME}` 数据根）。Rust 壳（`src-tauri/src/lib.rs`）只保留需要原生 GUI 的命令：`pick_folder`（目录选择对话框）、`open_path`（打开输出目录）、`exit_app`。前端用 **vue-router** 多页流程（`pages/*`：项目主页 / 新建 / 分组列表 / 组详情 / 完成），状态在 Pinia（`engine` 连接态、`projects` 项目/组/PK——权威在 sidecar，前端每步操作后用服务端返回刷新）；`api.ts` 镜像上面两类端点。
 
 ## 环境变量速查
 
 | 变量 | 作用 |
 | :-- | :-- |
-配置集中在 `config/settings.py`（pydantic-settings），可配项从 `~/.keeper/config.toml` 与 `KEEPER_*` 环境变量加载（环境变量优先），子路径全部派生自数据根 `~/.keeper`。
+配置集中在 `config/settings.py`（pydantic-settings），可配项从 `{KEEPER_HOME}/config.toml` 与 `KEEPER_*` 环境变量加载（环境变量优先），子路径全部派生自数据根 `KEEPER_HOME`（prod 见下表 KEEPER_HOME 行，dev 默认 `~/.keeper`）。
 
 | 变量 | 作用 |
 | :-- | :-- |
@@ -132,9 +132,9 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | `KEEPER_GEOCODE_ENABLED` / `KEEPER_GEOCODE_URL` | 拍摄地反查开关 / 服务地址（默认 OSM Nominatim，只发坐标） |
 | `KEEPER_DEVICE` | `cpu`（默认最稳）/ `cuda`；pyiqa 在 MPS 易炸，固定不走 MPS |
 | `KEEPER_DINO_MODEL` / `KEEPER_FACE_PACK` | 切分组/人脸模型（默认 `facebook/dinov2-small` / `buffalo_l`） |
-| `ARK_API_KEY` | 大模型 key（推理面）；也可写入 `~/.keeper/ark_key`（0600），绝不入库 |
+| `ARK_API_KEY` | 大模型 key（推理面）；也可写入 `{KEEPER_HOME}/ark_key`（0600），绝不入库 |
 | `KEEPER_ARK_MODEL` / `KEEPER_ARK_BASE_URL` / `KEEPER_ARK_CONCURRENCY` | Ark 模型 id / 基址 / 并发数 |
-| `VOLCENGINE_ACCESS_KEY` / `VOLCENGINE_SECRET_KEY` | 火山「管理面」AK/SK，**仅**用于设置页「拉取视觉模型」（`POST /settings/models` 调 `ListFoundationModels`），与打分无关；也可写入 `~/.keeper/volc_ak`·`volc_sk`（0600），绝不入库 |
+| `VOLCENGINE_ACCESS_KEY` / `VOLCENGINE_SECRET_KEY` | 火山「管理面」AK/SK，**仅**用于设置页「拉取视觉模型」（`POST /settings/models` 调 `ListFoundationModels`），与打分无关；也可写入 `{KEEPER_HOME}/volc_ak`·`{KEEPER_HOME}/volc_sk`（0600），绝不入库 |
 | `KEEPER_VOLC_REGION` | 管理面地域（默认 `cn-beijing`，火山方舟管理面当前仅此地域） |
 
 ## 关键约定
@@ -143,15 +143,15 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 - **工具链钉死**：`[tools]` 里所有版本必须是具体版本号，禁止 `latest`，保证可复现。新增工具/命令一律沉淀到 `mise.toml`，不散落到零散脚本。
 - **OpenCV 三包冲突**：`sidecar/pyproject.toml` 的 `[tool.uv] override-dependencies` 用「marker 永假」把 `opencv-python(-headless)` 从依赖树剔除，保住 `opencv-contrib-python` 的 `cv2.saliency`。别把它们加回依赖。
 - **不静默降级**：本地推理依赖缺失或模型加载失败立刻抛异常，不悄悄退化。
-- **API key 本地管理**：大模型 key 存在 `~/.keeper/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。火山管理面 AK/SK 同款处理（各一个 0600 文件、env 可覆盖、绝不入库）——机密一律隔离存文件，不进 sqlite（避免随 DB 备份/分享外泄）。
-- **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务，以及拍摄地反查只发 GPS 坐标。复制副本/归档/删除只动 `~/.keeper/workspace` 与输出目录，绝不写用户源文件夹。
+- **API key 本地管理**：大模型 key 存在 `{KEEPER_HOME}/ark_key`（0600 权限），可由 UI 录入或环境变量注入，绝不入库。火山管理面 AK/SK 同款处理（各一个 0600 文件、env 可覆盖、绝不入库）——机密一律隔离存文件，不进 sqlite（避免随 DB 备份/分享外泄）。
+- **照片不出本地**：任何把原图发往网络的改动都违反核心原则；只有低清预览允许上传给打分服务，以及拍摄地反查只发 GPS 坐标。复制副本/归档/删除只动 `{KEEPER_HOME}/workspace` 与输出目录，绝不写用户源文件夹。
 - **中文书写**：CLAUDE.md、README、`docs/`、代码注释、Git 提交信息一律用简体中文；代码标识符/API 名保持英文。
 
 ## 进度与尚未落地（按计划推进）
 
 已落地：分组、层①评分、层②大模型打分、PK 候选组装、缩略图缓存。
 
-**项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图**递归**复制副本到 `~/.keeper/workspace/{名}`（改名为随机 UUID、扁平存放，保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」按原始相对路径**还原目录树+原名**复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
+**项目化选片工作流（sqlite 持久化）已落地**：以项目为单位，源图**递归**复制副本到 `{KEEPER_HOME}/workspace/{名}`（改名为随机 UUID、扁平存放，保护原文件）→ 分组 → 逐组评测（层①+层②，自动分通过/未通过）→ 用户裁决（救回 + A/B 擂台 PK 四结局 + 手动改判 + 确认）→ 完成时把「通过」按原始相对路径**还原目录树+原名**复制到 `~/Pictures/Keeper/{名}` 并清理 workspace。全程每步落库，可随时退出/恢复（见 `service/project_service.py`、`service/pk_service.py`、前端 `pages/*` + `stores/projects.ts`）。拍摄地经 GPS+在线反查展示（尽力而为）。
 
 分组已接入人脸身份（ArcFace 人脸集合相似度）拆开「同场景不同人」，多人合影按「是不是同一拨人」区分。
 

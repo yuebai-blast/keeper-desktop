@@ -41,5 +41,7 @@ def test_query_token_passes():
 
 
 def test_options_passes_without_token():
+    # 中间件放行 OPTIONS（CORS 预检）；FastAPI 对仅注册了 GET 的路由返回 405（而非 401），
+    # 说明中间件没有拦截它。若中间件拦截，会返回 401 PlainText 而非框架的 405。
     c = _client("secret")
-    assert c.options("/x").status_code != 401
+    assert c.options("/x").status_code == 405
