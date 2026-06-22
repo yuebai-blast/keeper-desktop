@@ -46,8 +46,7 @@ async function doConfirmAll() {
 
 async function doSubmit() {
   if (!store.allConfirmed) return;
-  await store.complete(pid.value);
-  router.push(`/projects/${pid.value}/complete`);
+  router.push(`/projects/${pid.value}/review`);
 }
 </script>
 
@@ -152,11 +151,11 @@ async function doSubmit() {
 
     <ConfirmDialog
       v-model:open="showSubmit"
-      title="提交并完成？"
-      confirm-text="确认完成"
+      title="进入最终预览？"
+      confirm-text="去预览"
       @confirm="doSubmit"
     >
-      <p>提交后会把所有「通过」的照片复制到输出目录，并删除 workspace 副本释放空间。</p>
+      <p>接下来会进入<strong>最终预览</strong>页：可逐张二次调整去留、一键清理杂图，确认后再生成结果。</p>
     </ConfirmDialog>
   </section>
 </template>
