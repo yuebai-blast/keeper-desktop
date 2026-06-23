@@ -1,7 +1,7 @@
 // 下载逻辑纯函数：从 GitHub release 资产中按文件名匹配各平台产物，按 UA 猜系统。
 // 不做副作用（fetch 在 useRelease 里），便于单测。
 export type OS = "mac" | "windows" | "other";
-export type MatchKey = "mac-arm" | "mac-intel" | "windows";
+export type MatchKey = "mac-arm" | "windows";
 
 export interface Asset {
   name: string;
@@ -22,8 +22,8 @@ export function matchAssets(assets: Asset[]): Matched {
 
   const dmg = (n: string) => n.endsWith(".dmg");
   return {
+    // 只出 Apple Silicon mac；不再匹配 Intel mac（x64）产物
     "mac-arm": find((n) => dmg(n) && /(aarch64|arm64)/.test(n)),
-    "mac-intel": find((n) => dmg(n) && /(x64|x86_64|intel)/.test(n)),
     // exe（NSIS）优先，回退 msi
     windows: find((n) => n.endsWith(".exe")) ?? find((n) => n.endsWith(".msi")),
   };

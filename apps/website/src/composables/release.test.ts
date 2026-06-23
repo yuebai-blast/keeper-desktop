@@ -16,14 +16,12 @@ describe("detectOS", () => {
 describe("matchAssets", () => {
   const assets: Asset[] = [
     { name: "Keeper_0.1.0_aarch64.dmg", browser_download_url: "u/arm.dmg" },
-    { name: "Keeper_0.1.0_x64.dmg", browser_download_url: "u/intel.dmg" },
     { name: "Keeper_0.1.0_x64-setup.exe", browser_download_url: "u/win.exe" },
     { name: "Keeper_0.1.0_x64_en-US.msi", browser_download_url: "u/win.msi" },
   ];
-  it("按文件名匹配三平台产物", () => {
+  it("按文件名匹配各平台产物（仅 Apple Silicon mac + Windows）", () => {
     const m = matchAssets(assets);
     expect(m["mac-arm"]).toBe("u/arm.dmg");
-    expect(m["mac-intel"]).toBe("u/intel.dmg");
     expect(m["windows"]).toBe("u/win.exe"); // exe 优先于 msi
   });
   it("缺失产物返回 null", () => {

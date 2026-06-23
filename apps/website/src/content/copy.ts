@@ -3,7 +3,7 @@ export interface DownloadItem {
   os: string;       // 平台名
   arch: string;     // 芯片/架构说明
   ext: string;      // 产物格式
-  match: "mac-arm" | "mac-intel" | "windows"; // 与 release 资产匹配键
+  match: "mac-arm" | "windows"; // 与 release 资产匹配键
 }
 
 export interface Copy {
@@ -73,7 +73,7 @@ const zh: Copy = {
     kicker: "界面一览", title: "为选片而生的暗房界面", lede: "和官网同一套设计语言——暖调深色、克制、让照片发光。",
     reqTitle: "系统要求",
     reqs: [
-      "macOS 11+（Apple 芯片 / Intel）或 Windows 10+（x64）",
+      "macOS 11+（Apple 芯片）或 Windows 10+（x64）",
       "首次启动联网，一次性下载约 1.6 GB 本地 AI 模型到 ~/.keeper/models，之后完全离线",
       "AI 精评需自备火山方舟（Ark）API key（可在应用内录入）",
     ],
@@ -83,7 +83,6 @@ const zh: Copy = {
     kicker: "下载", title: "选择你的平台", lede: "免费下载，安装包托管在 GitHub Releases。",
     items: [
       { os: "macOS · Apple 芯片", arch: "M 系列（aarch64）", ext: ".dmg", match: "mac-arm" },
-      { os: "macOS · Intel 芯片", arch: "x86_64", ext: ".dmg", match: "mac-intel" },
       { os: "Windows", arch: "x64", ext: ".exe / .msi", match: "windows" },
     ],
     button: "下载",
@@ -156,7 +155,7 @@ const en: Copy = {
     kicker: "A look inside", title: "A darkroom built for culling", lede: "Same design language as this site — warm, dark, restrained, letting photos glow.",
     reqTitle: "Requirements",
     reqs: [
-      "macOS 11+ (Apple Silicon / Intel) or Windows 10+ (x64)",
+      "macOS 11+ (Apple Silicon) or Windows 10+ (x64)",
       "First launch downloads ~1.6 GB of local AI models to ~/.keeper/models, then runs fully offline",
       "AI review needs your own Volcano Ark API key (entered in-app)",
     ],
@@ -166,7 +165,6 @@ const en: Copy = {
     kicker: "Download", title: "Pick your platform", lede: "Free download, installers hosted on GitHub Releases.",
     items: [
       { os: "macOS · Apple Silicon", arch: "M-series (aarch64)", ext: ".dmg", match: "mac-arm" },
-      { os: "macOS · Intel", arch: "x86_64", ext: ".dmg", match: "mac-intel" },
       { os: "Windows", arch: "x64", ext: ".exe / .msi", match: "windows" },
     ],
     button: "Download",

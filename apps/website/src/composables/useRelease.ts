@@ -7,7 +7,7 @@ const API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
 // 全站共享一次拉取结果（首屏与下载区复用，避免重复请求）
 const version = ref<string | null>(null);
-const matched = ref<Matched>({ "mac-arm": null, "mac-intel": null, windows: null });
+const matched = ref<Matched>({ "mac-arm": null, windows: null });
 const loading = ref(true);
 const failed = ref(false);
 let started = false;

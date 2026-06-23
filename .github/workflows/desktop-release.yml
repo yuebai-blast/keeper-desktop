@@ -47,10 +47,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14         # Apple 芯片 (arm64)
+          - os: macos-14         # Apple 芯片 (arm64)——只出货 Apple Silicon，不再支持 Intel mac
             platform: darwin-aarch64
-          - os: macos-15-intel   # Intel (x86_64)，macos-13 已于 2025-12 退役，这是 Actions 最后的 x86_64 镜像（支持到 2027-08）
-            platform: darwin-x86_64
           - os: windows-2022     # Windows (x86_64)，钉死版本保证可复现
             platform: windows-x86_64
     runs-on: ${{ matrix.os }}
@@ -76,13 +74,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Prepare updater artifact + fragment
         # 把本平台的更新制品落到确定名字，并产出一段 latest.json 片段（平台→{签名,下载地址}）供聚合。
-        # macOS 的 .app.tar.gz 默认叫 Keeper.app.tar.gz——arm/intel 两机会同名撞车，这里加 arch 后缀区分。
+        # macOS 的 .app.tar.gz 默认叫 Keeper.app.tar.gz；加 arch 后缀（aarch64）保持与下载页/历史命名一致。
         run: |
           set -euo pipefail
           BUNDLE="apps/desktop/src-tauri/target/release/bundle"
           case "${{ matrix.platform }}" in
             darwin-aarch64) DIR="$BUNDLE/macos"; SUFFIX="aarch64" ;;
-            darwin-x86_64)  DIR="$BUNDLE/macos"; SUFFIX="x64" ;;
             windows-x86_64) DIR="$BUNDLE/nsis"; SUFFIX="" ;;
           esac
           if [ -n "$SUFFIX" ]; then

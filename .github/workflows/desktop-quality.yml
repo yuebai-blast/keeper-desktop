@@ -16,8 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - macos-14        # Apple 芯片 (arm64)
-          - macos-15-intel  # Intel (x86_64)，macos-13 已退役，这是 Actions 最后的 x86_64 镜像
+          - macos-14        # Apple 芯片 (arm64)——只出货 Apple Silicon，不再支持 Intel mac
           - windows-2022    # Windows (x86_64)，钉死版本保证可复现
     runs-on: ${{ matrix.os }}
     defaults:

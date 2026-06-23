@@ -20,10 +20,9 @@
 | 平台 | 产物 | 安装方式 |
 | :-- | :-- | :-- |
 | macOS · Apple 芯片（M 系列） | `.dmg`（文件名含 `aarch64`） | 打开 dmg，将 Keeper 拖入「应用程序」 |
-| macOS · Intel 芯片 | `.dmg`（文件名含 `x64`/`x86_64`） | 同上 |
 | Windows x64 | `.exe`（NSIS 安装器）或 `.msi` | 双击安装 |
 
-> 产物文件名以 Releases 实际为准；按芯片选对应的 macOS 包。
+> 仅支持 Apple 芯片 Mac 与 Windows，不再提供 Intel Mac 安装包。产物文件名以 Releases 实际为准。
 
 **首次启动需联网**：应用会一次性下载约 1.6 GB 本地 AI 模型到 `~/.keeper/models`，之后完全离线运行——照片不出本地。首次下载期间启动画面会显示进度。
 
