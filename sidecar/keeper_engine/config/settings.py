@@ -1,16 +1,18 @@
 """集中配置类——启动初始化一次，由 DI 以单例注入。
 
-可配置项从「配置文件 ~/.keeper/config.toml」与「环境变量（KEEPER_ 前缀）」加载，优先级：
+可配置项从「配置文件 {home}/config.toml」与「环境变量（KEEPER_ 前缀）」加载，优先级：
 构造参数 > 环境变量 > 配置文件 > 字段默认值。派生路径与固定常量写死在类里，不对外暴露为配置。
 
-所有本地资源统一放在数据根 home（默认 ~/.keeper）下：models/ 模型、workspace/ 项目副本、
-keeper.db 状态库、ark_key 大模型 key（0600）。缩略图就近缓存在各 workspace 项目的 .thumbnails/
-（随项目清理，不占全局目录）。子路径均由 home 派生（computed）。
-算法标定阈值随各自模块就近保留，不在此。
+所有本地资源统一放在数据根 home（dev 默认 ~/.keeper；prod 由 Tauri 注入 app_data_dir）下：
+config.toml 配置、models/ 模型、workspace/ 项目副本、keeper.db 状态库、ark_key 大模型 key（0600）。
+config.toml 的读取位置必须与写入端（settings_service）一致地跟随 home，否则 prod 写进
+app_data_dir 的配置会从 ~/.keeper 读不回来。缩略图就近缓存在各 workspace 项目的 .thumbnails/
+（随项目清理，不占全局目录）。子路径均由 home 派生（computed）。算法标定阈值随各自模块就近保留，不在此。
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import ClassVar
 
@@ -22,20 +24,21 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-_CONFIG_FILE = Path.home() / ".keeper" / "config.toml"
+# home 默认数据根（dev）；prod 经环境变量 KEEPER_HOME 覆盖（与 home 字段默认一致）。
+_DEFAULT_HOME = Path.home() / ".keeper"
 
 
 class Settings(BaseSettings):
-    """运行期配置。改 ~/.keeper/config.toml 或设 KEEPER_* 环境变量即可覆盖。"""
+    """运行期配置。改 {home}/config.toml 或设 KEEPER_* 环境变量即可覆盖。"""
 
-    model_config = SettingsConfigDict(env_prefix="KEEPER_", toml_file=_CONFIG_FILE, extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="KEEPER_", extra="ignore")
 
     # ── 固定常量（代码逻辑固定，不可配）──
     # 桌面端 Tauri webview 跨源调用本服务，放行本地来源（服务只绑 127.0.0.1，安全）
     cors_origin_regex: ClassVar[str] = r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$"
 
     # ── 可配置项 ──
-    home: Path = Path.home() / ".keeper"  # 统一数据根
+    home: Path = _DEFAULT_HOME  # 统一数据根（env KEEPER_HOME 覆盖）
     host: str = "127.0.0.1"               # 仅本机；main.py 的 --host/--port 可再覆盖
     port: int = 8761
     device: str = ""                      # ""=自动（CPU，有 CUDA 用 CUDA）/ "cuda" / "cpu"
@@ -117,5 +120,10 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # config.toml 必须跟数据根 home 走（与写入端 settings_service 一致），否则 prod 写到
+        # app_data_dir 的配置会从默认 ~/.keeper 读不回来。home 不能由 config.toml 自身决定
+        # （那样循环），故在此按「构造参数 > 环境变量 KEEPER_HOME > 默认」解析其位置——与 home 字段同序。
+        home = init_settings.init_kwargs.get("home") or os.environ.get("KEEPER_HOME") or _DEFAULT_HOME
+        toml_source = TomlConfigSettingsSource(settings_cls, toml_file=Path(home) / "config.toml")
         # 优先级：构造参数 > 环境变量 > 配置文件（toml）
-        return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))
+        return init_settings, env_settings, toml_source
