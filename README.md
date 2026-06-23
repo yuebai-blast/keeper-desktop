@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="brand/keeper-wordmark.svg" alt="Keeper 留影" width="420">
+</p>
+
 # Keeper · 留影
 
 > Keep the best, on your own machine. ／ 把最好的留下，留在你自己的电脑里。
