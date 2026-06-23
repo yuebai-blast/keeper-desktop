@@ -13,8 +13,34 @@ jobs:
   verify-sidecar:
     uses: ./.github/workflows/sidecar-quality.yml
 
+  # 版本一致性闸门：tag 版本号必须与 tauri.conf.json5 的 version 逐字一致。
+  # 二者分别是 latest.json 的版本来源（CI 从 tag 推）与应用自报版本（烤进安装包元数据、
+  # updater 据它比对）；不一致会让已装用户陷入反复「有新版」误报。这里在出包前直接拦死。
+  # workflow_dispatch（手动逃生口）无 tag，跳过校验、放行重发/回滚。
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Assert tag version == tauri.conf version
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
+          # tauri.conf.json5 带注释，jq 解析不了；按行首缩进锚定顶层 "version" 键，避开注释里的同名字样。
+          CONFIG_VERSION=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' \
+            apps/desktop/src-tauri/tauri.conf.json5 | head -1)
+          echo "tag=$TAG_VERSION  config=$CONFIG_VERSION"
+          if [ -z "$CONFIG_VERSION" ]; then
+            echo "::error::无法从 tauri.conf.json5 解析出 version 字段"; exit 1
+          fi
+          if [ "$TAG_VERSION" != "$CONFIG_VERSION" ]; then
+            echo "::error::tag 版本($TAG_VERSION) ≠ tauri.conf.json5 version($CONFIG_VERSION)，发版中止。改 config version 后重打 tag。"
+            exit 1
+          fi
+          echo "✅ 版本一致：$TAG_VERSION"
+
   build:
-    needs: [verify-desktop, verify-sidecar]   # 两道门禁全绿才出包
+    needs: [verify-desktop, verify-sidecar, verify-version]   # 三道门禁全绿才出包
     permissions:
       contents: write   # 让 GITHUB_TOKEN 能创建/写入 Release
     strategy:
