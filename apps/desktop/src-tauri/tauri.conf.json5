@@ -11,7 +11,7 @@
 
   "productName": "Keeper",          // 应用展示名（窗口标题栏外的系统层名称、安装包名）
   "version": "0.1.5",               // 应用版本，写进安装包元数据；与 package.json 各自独立
-  "identifier": "com.keeper.app",   // 全局唯一 bundle id（反向域名）；macOS/Windows 用它认应用，一经发布勿改
+  "identifier": "club.mint-ai.keeper",   // 全局唯一 bundle id（域名 keeper.mint-ai.club 的反向 DNS）；macOS/Windows 用它认应用，一经发布勿改。结尾不能用 .app（会被 macOS 当成应用包，目录被画叉打不开）
 
   "build": {
     // dev：tauri 起壳前先跑的前端 dev server 命令 + 它的地址

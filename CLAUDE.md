@@ -127,7 +127,7 @@ sidecar 按 Spring Boot 式分层 + 依赖注入组织（容器 `keeper_engine/c
 | 变量 | 作用 |
 | :-- | :-- |
 | `VITE_SIDECAR_URL` | 前端覆盖 sidecar 基址（默认 `http://127.0.0.1:8761`） |
-| `KEEPER_HOME` | 统一数据根：prod 由 Tauri 壳注入为 OS 约定目录（macOS `~/Library/Application Support/com.keeper.app`），dev 未注入时回落 `~/.keeper`。下含 `workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key`、`volc_ak`/`volc_sk`（管理面 AK/SK，0600） |
+| `KEEPER_HOME` | 统一数据根：prod 由 Tauri 壳注入为 OS 约定目录（macOS `~/Library/Application Support/club.mint-ai.keeper`），dev 未注入时回落 `~/.keeper`。下含 `workspace/`（项目副本，含各项目就近的 `.thumbnails/` 缩略图缓存）、`keeper.db`、`ark_key`、`volc_ak`/`volc_sk`（管理面 AK/SK，0600） |
 | `KEEPER_MODELS_DIR` | 模型缓存目录；prod 由 Tauri 注入为 `app_cache_dir/models`（大缓存不进用户备份），dev 默认 `{KEEPER_HOME}/models` |
 | `KEEPER_AUTH_TOKEN` | sidecar HTTP 鉴权 token；prod 由 Tauri 启动时生成并经 env 注入，dev/独立运行留空=不鉴权 |
 | `KEEPER_OUTPUT_ROOT` | 选片完成输出根（默认 `~/Pictures/Keeper`），最终输出到 `{此}/{项目名}` |
