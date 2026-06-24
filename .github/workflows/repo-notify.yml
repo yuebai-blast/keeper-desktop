@@ -1,0 +1,49 @@
+# 流水线信使：集中监听各顶层 workflow 的运行结果，成功/失败都私聊推送到飞书。
+# 通知逻辑全在 yuebai-blast/feishu-notify-action（改一处、各仓库 @v1 自动跟随）；
+# 本文件只做「监听 + 接线」，因 workflow_run 只能监听本仓库，故每个仓库各放一份。
+name: Repo Notify
+
+on:
+  workflow_run:
+    # 这里写各 workflow 的 name 字段值（不是文件名）。
+    # 只列顶层会独立运行的 workflow；*-quality.yml 是 workflow_call 复用型，不会独立触发，故不列。
+    # 新增顶层 workflow 时记得往这里补一行（GitHub 不支持通配符监听全部）。
+    workflows:
+      - Desktop CI
+      - Sidecar CI
+      - Website CI
+      - Desktop Release
+      - Website Release
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read   # 失败时读 jobs API 拿「哪个 job 的哪个 step 挂了」
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    # 想忽略 PR 的 CI、只在 push/发版时通知，放开下面这行：
+    # if: github.event.workflow_run.event != 'pull_request'
+    steps:
+      - name: 推送流水线结果到飞书私聊
+        uses: yuebai-blast/feishu-notify-action@v1
+        with:
+          app_id: ${{ secrets.FEISHU_APP_ID }}
+          app_secret: ${{ secrets.FEISHU_APP_SECRET }}
+          receive_id: ${{ secrets.FEISHU_RECEIVE_ID }}
+          status:         ${{ github.event.workflow_run.conclusion }}
+          workflow_name:  ${{ github.event.workflow_run.name }}
+          repo:           ${{ github.repository }}
+          branch:         ${{ github.event.workflow_run.head_branch }}
+          event:          ${{ github.event.workflow_run.event }}
+          actor:          ${{ github.event.workflow_run.actor.login }}
+          run_url:        ${{ github.event.workflow_run.html_url }}
+          run_id:         ${{ github.event.workflow_run.id }}
+          commit_sha:     ${{ github.event.workflow_run.head_sha }}
+          commit_message: ${{ github.event.workflow_run.head_commit.message }}
+          commit_author:  ${{ github.event.workflow_run.head_commit.author.name }}
+          run_started_at: ${{ github.event.workflow_run.run_started_at }}
+          run_updated_at: ${{ github.event.workflow_run.updated_at }}
+          github_token:   ${{ github.token }}
+          # timezone: America/Los_Angeles   # 默认 Asia/Shanghai
