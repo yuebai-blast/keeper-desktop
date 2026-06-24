@@ -77,10 +77,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Assemble release body (annotated tag note on top)
+        id: body
         env:
           CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           set -euo pipefail
+          # 版本号给 Release 标题用（去掉 desktop-v 前缀）。
+          echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
           : > notes.md
           # annotated tag 注释置顶（人工写的本次重点）；轻量 tag（直接指向 commit）跳过。
           if [ "${{ github.ref_type }}" = "tag" ] && [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
@@ -92,7 +95,8 @@ jobs:
       - name: Create release with notes
         uses: softprops/action-gh-release@v2
         with:
-          body_path: notes.md
+          name: Keeper v${{ steps.body.outputs.version }}   # 标题（header）放版本号；默认是 tag 名，不好看
+          body_path: notes.md                               # 正文（body）：tag 注释置顶 + 分类变更日志
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
