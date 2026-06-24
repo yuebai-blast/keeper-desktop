@@ -50,9 +50,10 @@
   // 私钥只在 CI secret 里签包，公钥在此验包，防更新源被劫持后推恶意包。
   "plugins": {
     "updater": {
-      // ⚠️ 占位公钥：发版前必须替换。生成一次密钥对（`mise run gen-update-keys`），
-      // 把生成的 *.pub 文件内容整段粘到这里；私钥设为 CI secret TAURI_SIGNING_PRIVATE_KEY。
-      // 在替换前，前端的检查更新会因验签信息不全而走「检查失败/暂无更新」分支（已容错），不影响应用其余功能。
+      // 在线升级签名公钥（minisign，key id 24570659EA1E5353）。私钥在 CI secret
+      // TAURI_SIGNING_PRIVATE_KEY，打包时签名、公钥在此验签——已与历史发版（latest.json）的签名核对一致，
+      // 确属配对密钥，勿随意更换（换了会让旧版客户端验签失败、收不到更新）。
+      // 如需轮换：`mise run gen-update-keys` 重新生成，公钥粘此、私钥更新到 CI secret，两端同步。
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0NTcwNjU5RUExRTUzNTMKUldSVFV4N3FXUVpYSkw0L0Y5SjZRclJqMjhLYjJlQVFvNXo5NTVhSWNGWm1YMlBubmJkRWhDNlIK",
       // 更新源：GitHub Release 静态托管 latest.json（零运维）。发版 CI 自动生成并上传它。
       // 占位符 {{target}}/{{arch}}/{{current_version}} 可用；这里用固定的 latest 发布页地址。

@@ -129,7 +129,8 @@ fi
 # 推送：先 main 再 tag（tag 触发发版 workflow）。
 git push origin main
 git push origin "$TAG"
-echo "✅ 已推送 $TAG，CI 出包：https://github.com/yuebai-blast/keeper/actions"
+# 变量后紧跟全角标点要用 ${} 界定，否则中文逗号会被并进变量名（set -u 下报 unbound）。
+echo "✅ 已推送 ${TAG}，CI 出包：https://github.com/yuebai-blast/keeper/actions"
 '''
 
 [tasks.gen-update-keys]
