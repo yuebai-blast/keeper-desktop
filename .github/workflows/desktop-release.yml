@@ -90,7 +90,7 @@ jobs:
             git tag -l --format='%(contents)' "$GITHUB_REF_NAME" >> notes.md
             printf '\n\n' >> notes.md
           fi
-          printf '%s\n' "$CHANGELOG" >> notes.md   # 经 env 传入，避免 ${{ }} 直插脚本被特殊字符破坏
+          printf '%s\n' "$CHANGELOG" >> notes.md   # 经 env 传入（不用表达式直插脚本），避免特殊字符破坏脚本
           echo "---- release 正文 ----"; cat notes.md
       - name: Create release with notes
         uses: softprops/action-gh-release@v2
