@@ -80,6 +80,8 @@ export const AssessPhase = {
   IDLE: "IDLE",
   LAYER1: "LAYER1",
   LAYER2: "LAYER2",
+  EMBED: "EMBED", // 分组：逐张取特征
+  CLUSTER: "CLUSTER", // 分组：聚类中（不确定态）
   DONE: "DONE",
 } as const;
 
@@ -441,6 +443,10 @@ export const assessProjectGroup = (id: number, gk: string) =>
 /** 查询某项目当前评测进度（高频轮询，空闲返回 IDLE）。 */
 export const getAssessProgress = (id: number): Promise<AssessProgress> =>
   get<AssessProgress>(`/projects/${id}/assess/progress`);
+
+/** 查询某项目当前分组进度（高频轮询，空闲返回 IDLE；与评测复用同一 AssessProgress 结构）。 */
+export const getGroupProgress = (id: number): Promise<AssessProgress> =>
+  get<AssessProgress>(`/projects/${id}/group/progress`);
 
 /** 重试评测失败图（photoId 省略=该组全部未解决失败）。 */
 export const retryGroup = (id: number, gk: string, photoId?: number) =>

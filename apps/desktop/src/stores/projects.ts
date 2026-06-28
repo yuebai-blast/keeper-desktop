@@ -11,6 +11,7 @@ import {
   createProject,
   deleteProject,
   getAssessProgress,
+  getGroupProgress,
   getGroup,
   getProject,
   groupProject,
@@ -71,17 +72,20 @@ export const useProjectsStore = defineStore("projects", {
       throw e;
     },
 
-    /** 评测期间轮询进度：发起 run() 的同时按 400ms 拉进度，settle 后停轮询并清空。 */
-    async _withProgress<T>(id: number, run: () => Promise<T>): Promise<T> {
+    /** 运行 run() 期间按 ~400ms 轮询进度（默认评测进度，分组传 getGroupProgress）；settle 后停轮询清空。 */
+    async _withProgress<T>(
+      id: number,
+      run: () => Promise<T>,
+      fetchProgress: (id: number) => Promise<AssessProgress> = getAssessProgress,
+    ): Promise<T> {
       let stop = false;
       const poll = async () => {
         while (!stop) {
           try {
-            this.progress = await getAssessProgress(id);
+            this.progress = await fetchProgress(id);
           } catch {
             /* 进度是尽力而为的旁路，拉取失败忽略 */
           }
-          // 分片睡眠：维持 ~400ms 轮询节奏，但 settle 置 stop 后 ~50ms 内退出，进度条及时清空、不多发请求
           for (let i = 0; i < 8 && !stop; i++) {
             await new Promise((r) => setTimeout(r, 50));
           }
@@ -158,12 +162,12 @@ export const useProjectsStore = defineStore("projects", {
       }
     },
 
-    /** 分组（幂等：已分组则原样返回）。 */
+    /** 分组（幂等：已分组则原样返回）；期间轮询分组进度驱动进度条。 */
     async runGroup(id: number) {
       this.busy = true;
       this.error = "";
       try {
-        this.detail = await groupProject(id);
+        this.detail = await this._withProgress(id, () => groupProject(id), getGroupProgress);
       } catch (e) {
         this._fail(e);
       } finally {
