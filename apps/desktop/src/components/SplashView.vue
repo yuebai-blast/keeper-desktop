@@ -16,15 +16,32 @@ type View = "connecting" | "offline" | "consent" | "loading" | "ready" | "retry"
 // 用户一旦同意就不再回到确认弹窗（避免同意瞬间仍有在途轮询拿到 awaiting_consent 而回闪）
 const consented = ref(false);
 
+// 启动初期只转圈：超过该时长仍未连上引擎，才把「重新连接」按钮亮出来（避免一连不上就让用户手忙脚乱地点）
+const STALL_MS = 60_000;
+const stalled = ref(false);
+const stallTimer = window.setTimeout(() => (stalled.value = true), STALL_MS);
+
 const view = computed<View>(() => {
-  if (engine.phase === "offline") return "offline";
-  if (engine.phase === "connecting" && !engine.health) return "connecting";
   const s = engine.health?.status;
   if (s === "ready") return "ready";
   if (s === "error") return engine.canRetry ? "retry" : "fatal";
   if (s === "awaiting_consent" && !consented.value) return "consent";
+  // 尚未拿到任何就绪态 = 连接/启动中：1 分钟内只转圈，超时仍连不上才切到可手动重试的 offline 视图
+  if (!engine.health && (engine.phase === "offline" || engine.phase === "connecting")) {
+    return stalled.value ? "offline" : "connecting";
+  }
   return "loading";
 });
+
+// 「重新连接」防连点：点一次进入冷却、按钮置灰，冷却结束才允许再点（后台轮询本就在持续重连，手动只是安抚）
+const retryCooling = ref(false);
+let coolTimer: number | undefined;
+function onRetry() {
+  if (retryCooling.value) return;
+  retryCooling.value = true;
+  void engine.refresh();
+  coolTimer = window.setTimeout(() => (retryCooling.value = false), 5_000);
+}
 
 const expectedGb = computed(() => ((engine.health?.expected_total_mb ?? 0) / 1024).toFixed(1));
 
@@ -62,7 +79,11 @@ watch(
   },
   { immediate: true },
 );
-onUnmounted(() => window.clearTimeout(enterTimer));
+onUnmounted(() => {
+  window.clearTimeout(enterTimer);
+  window.clearTimeout(stallTimer);
+  window.clearTimeout(coolTimer);
+});
 </script>
 
 <template>
@@ -81,17 +102,19 @@ onUnmounted(() => window.clearTimeout(enterTimer));
       </div>
 
       <Transition name="fade" mode="out-in">
-        <!-- 连接中 -->
+        <!-- 连接中（启动初期只转圈，不打扰用户） -->
         <div v-if="view === 'connecting'" key="connecting" class="stage">
           <div class="aperture spinning" />
-          <p class="line">正在连接推理服务…</p>
+          <p class="line">正在启动本地处理引擎…</p>
+          <p class="hint">首次启动需初始化本地处理引擎，可能耗时较久，请耐心等待，勿重复打开。</p>
         </div>
 
-        <!-- 服务未启动 -->
+        <!-- 启动较慢：超时仍未连上，提供一次性手动重试 -->
         <div v-else-if="view === 'offline'" key="offline" class="stage">
-          <p class="line warn">本地推理服务正在启动…</p>
-          <p class="hint">首次启动需初始化本地推理服务，可能耗时较久，请耐心等待，勿重复打开。<br />（开发模式下请在终端运行 <code>mise run sidecar</code>）</p>
-          <button class="btn" @click="engine.refresh()">重新连接</button>
+          <div class="aperture spinning" />
+          <p class="line warn">本地处理引擎启动较慢</p>
+          <p class="hint">引擎仍在后台持续尝试连接。长时间无响应？可点击下方按钮手动重试一次，并请勿重复打开应用。</p>
+          <button class="btn" :disabled="retryCooling" @click="onRetry">{{ retryCooling ? "正在重试…" : "重新连接" }}</button>
         </div>
 
         <!-- 首次下载确认 -->
