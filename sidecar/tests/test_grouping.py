@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
+from keeper_engine.request.group_request import GroupRequest
 from keeper_engine.service.grouping_service import GroupingService
 
 
@@ -94,3 +95,41 @@ def test_face_missing_does_not_penalize():
     embs = [_unit(1, 0, 0)] * 2
     groups = GroupingService.cluster(["a", "b"], embs, [T0] * 2, [None, _faces(_unit(0, 1, 0, 0))])
     assert len(groups) == 1 and set(groups[0].photos) == {"a", "b"}
+
+
+class _ReadyReadiness:
+    status = "ready"
+    detail = ""
+
+
+def _grouping_service():
+    # vision 不会被用到——下面 monkeypatch 掉 embed_photo
+    return GroupingService(vision=object(), readiness=_ReadyReadiness())
+
+
+def test_group_ticks_on_progress_per_photo_and_on_cluster_once(monkeypatch):
+    svc = _grouping_service()
+    monkeypatch.setattr(svc, "embed_photo", lambda p, companions=(): (_unit(1, 0, 0), None, T0))
+    ticks, clusters = [], []
+    svc.group(
+        GroupRequest(photos=["a", "b", "c"]),
+        on_progress=lambda: ticks.append(1),
+        on_cluster=lambda: clusters.append(1),
+    )
+    assert len(ticks) == 3      # 每张一次
+    assert len(clusters) == 1   # 切聚类一次
+
+
+def test_group_ticks_even_for_failed_photo(monkeypatch):
+    svc = _grouping_service()
+
+    def fake_embed(p, companions=()):
+        if p == "b":
+            raise ValueError("broken file")
+        return _unit(1, 0, 0), None, T0
+
+    monkeypatch.setattr(svc, "embed_photo", fake_embed)
+    ticks = []
+    resp = svc.group(GroupRequest(photos=["a", "b", "c"]), on_progress=lambda: ticks.append(1))
+    assert len(ticks) == 3                      # 失败图也推进度（与层①一致）
+    assert [e.path for e in resp.errors] == ["b"]

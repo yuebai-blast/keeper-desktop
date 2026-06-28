@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import datetime
 from typing import Sequence
 
@@ -50,8 +51,14 @@ class GroupingService:
         self._vision = vision
         self._readiness = readiness
 
-    def group(self, req: GroupRequest) -> GroupResponse:
-        """分组端点编排：就绪门禁 → 逐张取特征（单张失败记 errors）→ 聚类 → 组装响应。"""
+    def group(
+        self,
+        req: GroupRequest,
+        on_progress: Callable[[], None] | None = None,
+        on_cluster: Callable[[], None] | None = None,
+    ) -> GroupResponse:
+        """分组端点编排：就绪门禁 → 逐张取特征（每张回调 on_progress 推进度，含失败图）
+        → 切聚类前回调 on_cluster（进入不确定态）→ 聚类 → 组装响应。"""
         if self._readiness.status != "ready":
             raise BizException(
                 BizCode.MODEL_NOT_READY,
@@ -70,7 +77,11 @@ class GroupingService:
                 raise BizException(BizCode.MODEL_NOT_READY, f"本地模型不可用：{e}") from e
             except Exception as e:  # noqa: BLE001 —— 单张数据错误上报而非静默跳过
                 errors.append(PhotoError(path=p, error=f"{type(e).__name__}: {e}"))
+            if on_progress is not None:
+                on_progress()  # 每张处理完推进度（含失败图），与层①评测一致
 
+        if on_cluster is not None:
+            on_cluster()  # 切到聚类阶段（O(n²) 不逐项报数，前端转不确定态）
         groups = self.cluster(paths, embeddings, times, face_sets)
         return GroupResponse(groups=groups, errors=errors)
 
