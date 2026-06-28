@@ -178,6 +178,16 @@ def assess_progress(
     return svc.get_progress(project_id)
 
 
+@router.get("/{project_id}/group/progress", response_model=AssessProgress)
+@inject
+def group_progress(
+    project_id: int,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> AssessProgress:
+    """分组实时进度（高频轮询、纯读内存；与评测共用同一进度侧信道）。空闲/未知返回 IDLE。"""
+    return svc.get_progress(project_id)
+
+
 @router.post("/{project_id}/complete", response_model=CompleteResponse)
 @inject
 def complete(

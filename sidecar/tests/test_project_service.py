@@ -37,10 +37,15 @@ from keeper_engine.vo.score import Score
 
 
 class FakeGrouping:
-    """把照片对半分成 g1 / g2 两组。"""
+    """把照片对半分成 g1 / g2 两组；按张回调 on_progress、切聚类回调 on_cluster。"""
 
-    def group(self, req) -> GroupResponse:
+    def group(self, req, on_progress=None, on_cluster=None) -> GroupResponse:
         ps = req.photos
+        for _ in ps:
+            if on_progress is not None:
+                on_progress()
+        if on_cluster is not None:
+            on_cluster()
         mid = max(1, len(ps) // 2)
         groups = [Group(id="g1", photos=ps[:mid])]
         if ps[mid:]:
@@ -619,3 +624,12 @@ def test_get_review_none_selection_falls_into_discarded(svc, tmp_path):
     assert target.id in discarded_ids, "selection=None 的照片未落入 discarded 区"
     # 且不在 kept 区（两区严格互补）
     assert target.id not in kept_ids, "selection=None 的照片不应出现在 kept 区"
+
+
+def test_group_reports_progress_done(svc, tmp_path):
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    project = service.create("分组进度", str(src))
+    service.group(project.id)
+    # 分组跑完后，共享进度侧信道停在 DONE（begin→tick→phase(CLUSTER)→done 全走过）
+    assert service.get_progress(project.id).phase == AssessPhase.DONE.value

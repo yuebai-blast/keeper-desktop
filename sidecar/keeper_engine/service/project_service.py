@@ -197,14 +197,28 @@ class ProjectService:
     # ── 分组 ────────────────────────────────────────────────────────────────
 
     def group(self, project_id: int) -> ProjectDetailResponse:
-        """对 workspace 照片分组并持久化；已分组则直接返回详情（不重复分组）。"""
+        """对 workspace 照片分组并持久化；已分组则直接返回详情（不重复分组）。
+        分组期间经共享 ProgressTracker 上报进度（EMBED 逐张计数 → CLUSTER 不确定态）。"""
         project = self._require_project(project_id)
         if project.status != ProjectStatus.GROUPING.value:
             return self.get_detail(project_id)
 
         photos = self._photos.by_project(project_id)
         by_path = {p.workspace_path: p for p in photos}
-        resp = self._grouping.group(GroupRequest(photos=list(by_path.keys())))
+
+        pid = project_id
+        self._progress.begin(
+            pid, group_key=None, group_index=1, group_count=1,
+            phase=AssessPhase.EMBED, total=len(by_path),
+        )
+        try:
+            resp = self._grouping.group(
+                GroupRequest(photos=list(by_path.keys())),
+                on_progress=lambda: self._progress.tick(pid),
+                on_cluster=lambda: self._progress.phase(pid, AssessPhase.CLUSTER, total=0),
+            )
+        finally:
+            self._progress.done(pid)  # 异常路径也收尾，避免进度卡在 EMBED
 
         changed: list[ProjectPhoto] = []
         group_rows: list[PhotoGroup] = []
