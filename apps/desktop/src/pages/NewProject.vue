@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 页面一：填项目名 + 选源文件夹 → 预览数量/时间/拍摄地 → 确认创建（复制副本）→ 分组 → 进列表。
+// 页面一：填项目名 + 选源文件夹 → 预览数量/时间/拍摄地 → 确认创建（复制副本）→ 进列表（分组在列表页触发）。
 import { invoke } from "@tauri-apps/api/core";
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
@@ -113,7 +113,7 @@ async function create() {
     <p v-if="localError" class="err">{{ localError }}</p>
 
     <button class="btn btn--primary lg" :disabled="!canCreate()" @click="create">
-      {{ creating ? "正在创建并分组…" : "确认创建" }}
+      {{ creating ? "正在创建…" : "确认创建" }}
     </button>
   </section>
 </template>
