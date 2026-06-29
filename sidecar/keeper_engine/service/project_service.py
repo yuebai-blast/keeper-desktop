@@ -296,6 +296,8 @@ class ProjectService:
     ) -> None:
         """统一评测内核：对缺分/失败且在 targets 内的图调模型，按全组最新分（失败按 0）
         重算 survivors/kept/selection。targets=None 表示全组（首评）。"""
+        project = self._projects.get(group.project_id)  # 读本项目的保底旋钮
+        pct, fixed = project.guarantee_pct, project.guarantee_fixed
         by_path = {p.workspace_path: p for p in photos}
         target_set = set(by_path) if targets is None else {p.workspace_path for p in targets}
 
@@ -328,7 +330,7 @@ class ProjectService:
 
         # 重算 survivors（全组，失败/无分按 0；失败图按 0 分照常参与漏斗，不做特例排除）
         total = len(photos)
-        m = self._params.compute_m(self._params.compute_n(total))
+        m = self._params.compute_m(self._params.compute_n(total, pct, fixed))
         local_scored = [LocalScore(path=p.workspace_path, score=p.local_score or 0.0) for p in photos]
         survivor_paths = {ls.path for ls, _ in self._funnel.apply_funnel(local_scored, m)}
         survivors = [p for p in photos if p.workspace_path in survivor_paths]
@@ -358,7 +360,7 @@ class ProjectService:
                     self._mark_failed(p, AssessStatus.LAYER2_FAILED, err.error)
 
         # 重算 kept（全组 survivors，缺分/失败按 0 照常参与排名，不做特例排除）
-        n = self._params.compute_n(total)
+        n = self._params.compute_n(total, pct, fixed)
         llm_scored = [
             Score(path=p.workspace_path, score=p.llm_score or 0.0,
                   reason=p.llm_reason or "", flaws=p.llm_flaws or "")

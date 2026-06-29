@@ -672,3 +672,33 @@ def test_create_rejects_out_of_range_guarantee_fixed(svc, tmp_path):
     with pytest.raises(BizException) as ei:
         service.create("非法固定值", str(src), guarantee_fixed=0)
     assert ei.value.biz == BizCode.INVALID_GUARANTEE_PARAMS
+
+
+def _count_kept_in_group(settings, project_id: int, group_key: str) -> int:
+    from keeper_engine.config.database import Database
+    db = Database(settings)
+    photos = ProjectPhotoMapper(db).by_project(project_id)
+    return sum(
+        1 for p in photos
+        if p.group_key == group_key and p.selection == Selection.KEPT.value
+    )
+
+
+def test_assess_kept_count_follows_project_guarantee_fixed(tmp_path):
+    # 源 10 张 → FakeGrouping 对半分成 g1(5)/g2(5)。固定值越大，保底越多 → KEPT 越多。
+    src = _make_source(tmp_path, 10)
+
+    svc_lo, set_lo = _build_service(tmp_path / "lo", FakeAssess(), FakeScoring())
+    p_lo = svc_lo.create("低保底", str(src), guarantee_pct=20, guarantee_fixed=1)
+    svc_lo.group(p_lo.id)
+    svc_lo.assess_group(p_lo.id, "g1")
+
+    svc_hi, set_hi = _build_service(tmp_path / "hi", FakeAssess(), FakeScoring())
+    p_hi = svc_hi.create("高保底", str(src), guarantee_pct=20, guarantee_fixed=3)
+    svc_hi.group(p_hi.id)
+    svc_hi.assess_group(p_hi.id, "g1")
+
+    kept_lo = _count_kept_in_group(set_lo, p_lo.id, "g1")
+    kept_hi = _count_kept_in_group(set_hi, p_hi.id, "g1")
+    assert kept_lo == 1   # N = max(ceil(5×0.2)=1, 1) = 1
+    assert kept_hi == 3   # N = max(ceil(5×0.2)=1, 3) = 3
