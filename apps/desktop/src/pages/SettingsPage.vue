@@ -260,7 +260,9 @@ async function save() {
           </button>
         </div>
         <!-- 手动检查的结果反馈（横幅负责「发现新版/下载/重启」的操作，这里只给文字状态） -->
-        <p v-if="updater.phase === 'error'" class="err">检查更新失败：{{ updater.error }}</p>
+        <!-- checking 必须先于 checkedOnce 兜底分支：否则检查中会误落到「已是最新」 -->
+        <p v-if="updater.phase === 'checking'" class="muted">正在检查更新…</p>
+        <p v-else-if="updater.phase === 'error'" class="err">检查更新失败：{{ updater.error }}</p>
         <p v-else-if="updater.phase === 'available'" class="ok">发现新版本 v{{ updater.version }}，见顶部提示。</p>
         <p v-else-if="updater.phase === 'downloading'" class="muted">正在下载更新… {{ updater.percent }}%</p>
         <p v-else-if="updater.phase === 'ready'" class="ok">新版本已就绪，重启生效。</p>
