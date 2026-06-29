@@ -69,3 +69,11 @@ class Project(SQLModel, table=True):
         default=None,
         sa_column_kwargs={"comment": "完成（归档）时间（可空）"},
     )
+    guarantee_pct: float = Field(
+        default=0.2,
+        sa_column_kwargs={"comment": "保底百分比（小数，0<pct<=1）：每组保底数 N = max(ceil(总数×此值), 固定值)"},
+    )
+    guarantee_fixed: int = Field(
+        default=3,
+        sa_column_kwargs={"comment": "保底固定值（>=1）：每组保底数 N 的下界，小组靠它兜底"},
+    )
