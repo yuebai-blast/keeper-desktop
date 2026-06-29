@@ -9,6 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..service.params_service import DEFAULT_FIXED, DEFAULT_PCT
 from ..vo.local_score import ScoreDetail
 from .common import PhotoError
 
@@ -40,8 +41,8 @@ class ProjectView(BaseModel):
     location: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
-    guarantee_pct: float = 0.2
-    guarantee_fixed: int = 3
+    guarantee_pct: float = DEFAULT_PCT
+    guarantee_fixed: int = DEFAULT_FIXED
 
 
 class GroupSummary(BaseModel):

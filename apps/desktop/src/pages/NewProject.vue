@@ -62,7 +62,9 @@ function nameError(raw: string): string {
 const nameErr = computed(() => nameError(name.value));
 
 const canCreate = () =>
-  !!name.value.trim() && !nameErr.value && !!folder.value && !!preview.value && preview.value.count > 0 && !creating.value;
+  !!name.value.trim() && !nameErr.value && !!folder.value && !!preview.value && preview.value.count > 0 && !creating.value
+  && Number.isFinite(guaranteePct.value) && guaranteePct.value >= 1 && guaranteePct.value <= 100
+  && Number.isFinite(guaranteeFixed.value) && guaranteeFixed.value >= 1;
 
 async function create() {
   if (!canCreate()) return;

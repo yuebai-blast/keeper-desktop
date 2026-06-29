@@ -202,7 +202,7 @@ class ProjectService:
     @staticmethod
     def _validate_guarantee(pct: int | None, fixed: int | None) -> tuple[float, int]:
         """校验并换算保底旋钮：百分比整数 1–100 → 小数；固定值整数 >=1。缺省取默认。"""
-        pct_int = int(_DEFAULT_PCT * 100) if pct is None else pct
+        pct_int = round(_DEFAULT_PCT * 100) if pct is None else pct
         fixed_int = _DEFAULT_FIXED if fixed is None else fixed
         if not (1 <= pct_int <= 100):
             raise BizException(BizCode.INVALID_GUARANTEE_PARAMS, f"保底百分比须在 1–100：{pct_int}")

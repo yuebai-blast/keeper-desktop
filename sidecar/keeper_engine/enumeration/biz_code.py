@@ -44,7 +44,7 @@ class BizCode(Enum):
     INVALID_SOURCE_FOLDER = (410006, "源文件夹无效")          # 原 400：不存在 / 非目录
     GROUPS_NOT_ALL_CONFIRMED = (410007, "还有未确认的分组，无法完成")  # 原 400
     GROUP_HAS_UNRESOLVED_FAILURES = (410008, "本组还有未处理的评测失败，请先重试或忽略")  # 原 409
-    INVALID_GUARANTEE_PARAMS = (410009, "保底参数非法")  # 原 400：百分比不在 (0,100] 或固定值 <1
+    INVALID_GUARANTEE_PARAMS = (410009, "保底参数非法")  # 原 400：百分比不在 [1,100] 或固定值 <1
 
     def __init__(self, code: int, message: str) -> None:
         self.code = code
