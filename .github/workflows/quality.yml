@@ -35,7 +35,7 @@ jobs:
       # 补装 rustfmt/clippy 组件（mise 委托 rustup 时 [tools].components 不生效）——env 准备而非真依赖，显式成步。
       - name: Ensure rust components
         run: mise run rust-components-desktop
-      # 先构建前端：vue-tsc 类型检查 + 产出 dist（tauri-build 要求 frontendDist 存在，clippy 才能编译）
+      # 先构建前端：vue-tsc 类型检查 + 产出 dist（build-tauri 要求 frontendDist 存在，clippy 才能编译）
       - name: Build frontend (typecheck + dist)
         run: mise run build-desktop
       - name: Rust format check

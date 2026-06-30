@@ -130,11 +130,11 @@ jobs:
       - run: mise run bundle-sidecar
       - run: mise run stage-sidecar
       - name: Build Tauri app
-        working-directory: desktop
-        # 经 mise exec 调用，确保用上 mise 钉死的 pnpm（工具链强制走 mise）。
-        # --config 合并打包专用配置：把 sidecar onedir 目录打进包（bundle.resources）+ 产出带签名的更新制品
+        # 复用 mise run build-tauri（命令唯一权威在 mise.toml，与 package 共用，避免两处重抄漂移）。
+        # task 自带 dir = "desktop"（相对仓库根解析，与 cwd 无关），故无需再设 working-directory。
+        # 打包专用配置把 sidecar onedir 目录打进包（bundle.resources）+ 产出带签名的更新制品
         #（createUpdaterArtifacts）。签名私钥由下方 env 从 secret 注入，缺失则构建失败（符合预期）。
-        run: mise exec -- pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
+        run: mise run build-tauri
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

@@ -68,7 +68,7 @@ run = "uv run python devtools/localscore.py"
 
 # —— 构建打包 ——
 [tasks.build-desktop]
-description = "构建 desktop 前端：vue-tsc 类型检查 + vite 打包（产出 desktop/dist；tauri-build 要求 frontendDist 存在，clippy 才能编译）"
+description = "构建 desktop 前端：vue-tsc 类型检查 + vite 打包（产出 desktop/dist；build-tauri 要求 frontendDist 存在，clippy 才能编译）"
 dir = "desktop"
 # 直接调底层命令（命令唯一权威在此），不再转调 package.json 的 scripts。
 run = "pnpm vue-tsc --noEmit && pnpm vite build"
@@ -92,16 +92,22 @@ mkdir -p desktop/src-tauri/binaries
 cp -R sidecar/dist/keeper-sidecar "$DST"
 """
 
-[tasks.package]
+[tasks.build-tauri]
 # 打包态才需要把 sidecar 目录打进应用：bundle.resources 只在打包专用配置 tauri.bundle.conf.json5 里，
 # 经 --config 合并进来；base tauri.conf.json5 不含它，所以本地 dev（mise run app）零依赖、
 # 不必先跑 stage-sidecar。详见 docs/packaging.md。
+# 单抽成 task 让 package 与 CI 复用同一份命令（命令唯一权威）；签名密钥由调用方按需注入 env。
+description = "tauri build（带 resources 的打包专用配置，产出最终安装包 + 更新制品）"
+dir = "desktop"
+run = "pnpm tauri build --config src-tauri/tauri.bundle.conf.json5"
+
+[tasks.package]
 description = "打包桌面应用（最终产品）：冻结 sidecar → 放入 binaries → tauri build（带 resources 的打包专用配置）"
 dir = "desktop"
 run = """
 mise run bundle-sidecar
 mise run stage-sidecar
-pnpm tauri build --config src-tauri/tauri.bundle.conf.json5
+mise run build-tauri
 """
 
 [tasks.icon]
