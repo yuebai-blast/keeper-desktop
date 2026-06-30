@@ -58,7 +58,7 @@
       // 更新源：GitHub Release 静态托管 latest.json（零运维）。发版 CI 自动生成并上传它。
       // 占位符 {{target}}/{{arch}}/{{current_version}} 可用；这里用固定的 latest 发布页地址。
       "endpoints": [
-        "https://github.com/yuebai-blast/keeper/releases/latest/download/latest.json"
+        "https://github.com/yuebai-blast/keeper-desktop/releases/latest/download/latest.json"
       ]
     }
   },

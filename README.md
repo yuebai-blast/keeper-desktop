@@ -19,7 +19,7 @@
 
 ## 下载与安装
 
-到 [Releases](https://github.com/yuebai-blast/keeper/releases) 下载对应平台的安装包：
+到 [Releases](https://github.com/yuebai-blast/keeper-desktop/releases) 下载对应平台的安装包：
 
 | 平台 | 产物 | 安装方式 |
 | :-- | :-- | :-- |
@@ -49,14 +49,14 @@
 ## 仓库结构
 
 ```
-keeper/
+keeper-desktop/
 ├── CLAUDE.md              # 项目纲领：产品流程 + 架构 + 工具链约定（动手前先读）
 ├── docs/
 │   ├── product-flow.md    # 选片两层级联漏斗 + 「≥60 全进、补足保底数」规则
 │   └── architecture.md    # 三层架构 + Scorer 可替换设计 + 数据流
 ├── mise.toml              # 工具链钉死 + 命令（install / sidecar / app / test）
 ├── sidecar/               # Python 本地推理服务（FastAPI）
-└── desktop/          # Tauri 桌面应用（Vue3 + TS 前端 + Rust 壳）
+└── desktop/               # Tauri 桌面应用（Vue3 + TS 前端 + Rust 壳）
 ```
 
 ## 快速开始

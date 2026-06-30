@@ -130,7 +130,7 @@ fi
 git push origin main
 git push origin "$TAG"
 # 变量后紧跟全角标点要用 ${} 界定，否则中文逗号会被并进变量名（set -u 下报 unbound）。
-echo "✅ 已推送 ${TAG}，CI 出包：https://github.com/yuebai-blast/keeper/actions"
+echo "✅ 已推送 ${TAG}，CI 出包：https://github.com/yuebai-blast/keeper-desktop/actions"
 '''
 
 [tasks.gen-update-keys]
@@ -153,7 +153,7 @@ rm -rf desktop/src-tauri/icons/android desktop/src-tauri/icons/ios desktop/src-t
 
 # ---- desktop 质量门禁（CI 与发版前共用，命令统一走 mise）----
 [tasks.desktop-install]
-description = "安装 desktop（desktop）前端依赖"
+description = "安装 desktop 前端依赖"
 run = "pnpm --dir desktop install"
 
 [tasks.desktop-build]
