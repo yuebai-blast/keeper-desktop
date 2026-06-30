@@ -625,6 +625,7 @@ class ProjectService:
             ),
             photo_paths=[p.workspace_path for p in photos],
             photo_names=[p.original_rel_path or p.filename for p in photos],
+            photo_ids=[p.id for p in photos],
         )
 
     @staticmethod

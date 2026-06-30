@@ -720,3 +720,17 @@ def test_photo_mapper_get_and_group_delete(svc, tmp_path):
     service._groups.delete(pid, "g1")
     keys = {g.group_key for g in service._groups.by_project(pid)}
     assert "g1" not in keys and "g2" in keys
+
+
+def test_group_summary_exposes_aligned_photo_ids(svc, tmp_path):
+    """GroupSummary.photo_ids 与 photo_paths 同序对齐，供前端缩略图发起移动。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    pid = service.create("ids试", str(src)).id
+    service.group(pid)
+
+    detail = service.get_detail(pid)
+    g1 = next(g for g in detail.groups if g.group_key == "g1")
+    by_path = {p.workspace_path: p.id for p in service._photos.by_group(pid, "g1")}
+    assert len(g1.photo_ids) == len(g1.photo_paths)
+    assert g1.photo_ids == [by_path[path] for path in g1.photo_paths]
