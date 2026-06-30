@@ -603,6 +603,9 @@ class ProjectService:
         # ⑤ 放行：只改归属
         photo.group_key = target_group_key
         self._photos.update_many([photo])
+        # 移动改变了源组与目标组的成员 → 两组的进行中 PK 擂台都已过期，清除（顺带清掉空源组的孤儿状态）
+        self._pk_states.delete(project_id, source_key)
+        self._pk_states.delete(project_id, target_group_key)
         # 源组被拖空 → 删除空组
         if not self._photos.by_group(project_id, source_key):
             self._groups.delete(project_id, source_key)

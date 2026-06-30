@@ -866,3 +866,37 @@ def test_move_target_group_not_found(tmp_path):
     with pytest.raises(BizException) as ei:
         service.move_photo(pid, p.id, "g_missing")
     assert ei.value.biz == BizCode.GROUP_NOT_FOUND
+
+
+def test_move_clears_source_pk_state(tmp_path):
+    """移组后源组的进行中 PK 状态应被清除（成员已变、擂台已过期）。
+    用 4 张（g1/g2 各 2 张），移后 g1 仍剩 1 张非空，不触发删组，
+    专门验证「源组非空分支」下 PkState 也被清除。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)  # g1=2 张，g2=2 张
+    # 给 g1 起一局 PK 擂台
+    pool = [p.workspace_path for p in service._photos.by_group(pid, "g1")]
+    service._pk.start(pid, "g1", pool, False)
+    # 移动前 PkState 存在
+    assert service._pk_states.get(pid, "g1") is not None
+    # 把 g1 一张移到 g2（g1 仍剩 1 张，非空）
+    photo = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, photo.id, "g2")
+    # 移动后 g1 的 PK 状态应被清除
+    assert service._pk_states.get(pid, "g1") is None
+
+
+def test_move_clears_target_pk_state(tmp_path):
+    """移组后目标组的进行中 PK 状态应被清除（新成员进入、擂台已过期）。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)  # g1=2 张，g2=2 张
+    # 给 g2 起一局 PK 擂台
+    pool = [p.workspace_path for p in service._photos.by_group(pid, "g2")]
+    service._pk.start(pid, "g2", pool, False)
+    # 移动前 g2 PkState 存在
+    assert service._pk_states.get(pid, "g2") is not None
+    # 把 g1 一张移到 g2
+    photo = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, photo.id, "g2")
+    # 移动后 g2 的 PK 状态应被清除
+    assert service._pk_states.get(pid, "g2") is None
