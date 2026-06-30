@@ -5,6 +5,7 @@ import {
   assessProjectGroup,
   completeProject,
   confirmAll,
+  movePhotoToGroup,
   getReview,
   updateSelectionBatch,
   confirmGroup,
@@ -259,6 +260,19 @@ export const useProjectsStore = defineStore("projects", {
       this.error = "";
       try {
         this.detail = await this._withProgress(id, () => confirmAll(id));
+      } catch (e) {
+        this._fail(e);
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    /** 把一张照片从一个组拖到另一个组：成功后用返回的详情刷新分组列表。 */
+    async movePhoto(id: number, photoId: number, targetGroupKey: string) {
+      this.busy = true;
+      this.error = "";
+      try {
+        this.detail = await movePhotoToGroup(id, photoId, targetGroupKey);
       } catch (e) {
         this._fail(e);
       } finally {

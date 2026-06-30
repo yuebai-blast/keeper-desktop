@@ -74,6 +74,10 @@ export const BizCode = {
   GROUPS_NOT_ALL_CONFIRMED: 410007,
   GROUP_HAS_UNRESOLVED_FAILURES: 410008,
   INVALID_GUARANTEE_PARAMS: 410009,
+  PHOTO_NOT_FOUND: 410010,
+  PHOTO_MOVE_TARGET_ASSESSED: 410011,
+  GROUP_CONFIRMED_LOCKED: 410012,
+  PHOTO_MOVE_BLOCKED_BY_FAILURE: 410013,
 } as const;
 
 /** 评测进度阶段（镜像 sidecar enumeration/assess_phase.py，改任一端两边同步）。 */
@@ -344,6 +348,7 @@ export interface GroupSummary {
   failed_count: number; // 评测失败且未忽略的张数（>0 时本组裁决被锁）
   photo_paths: string[]; // 组内照片的 workspace 路径（供列表页缩略图预览）
   photo_names: string[]; // 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
+  photo_ids: number[]; // 与 photo_paths 平行：照片主键（供拖拽移组）
 }
 
 /** 组详情/PK 里的一张照片完整信息（层①必有，层②有则展示）。 */
@@ -472,6 +477,12 @@ export const confirmGroup = (id: number, gk: string) =>
 /** 一键通过：未评测的组先评测，再全部置为已确认。 */
 export const confirmAll = (id: number) =>
   post<ProjectDetail>(`/projects/${id}/confirm-all`, {});
+
+/** 把一张照片移到目标组（只改归属，返回刷新后的项目详情）。 */
+export const movePhotoToGroup = (id: number, photoId: number, targetGroupKey: string) =>
+  post<ProjectDetail>(`/projects/${id}/photos/${photoId}/move`, {
+    target_group_key: targetGroupKey,
+  });
 
 /** 完成：复制「通过」到目标目录 → 删 workspace → 标记完成。 */
 export const completeProject = (id: number) =>
