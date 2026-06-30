@@ -569,6 +569,48 @@ class ProjectService:
     def list_projects(self) -> list[ProjectView]:
         return [ProjectView.model_validate(p) for p in self._projects.all()]
 
+    def move_photo(
+        self, project_id: int, photo_id: int, target_group_key: str
+    ) -> ProjectDetailResponse:
+        """把一张照片移到另一个组：只改 group_key，保留全部评分/裁决；不重算漏斗。
+        校验：同组 no-op → 已确认锁定 → 未解决失败 → 未评入已评 → 放行；
+        放行后源组被拖空则删除空组。"""
+        self._require_project(project_id)
+        target = self._require_group(project_id, target_group_key)  # 不存在→GROUP_NOT_FOUND
+        photo = self._photos.get(project_id, photo_id)
+        if photo is None:
+            raise BizException(BizCode.PHOTO_NOT_FOUND, f"照片不存在：{photo_id}")
+
+        source_key = photo.group_key
+        # ④ 同组：纯 no-op，提前返回（不受失败/锁定校验影响）
+        if source_key == target_group_key:
+            return self.get_detail(project_id)
+
+        source = self._require_group(project_id, source_key)
+        # ① 已确认锁定（源或目标任一已确认即禁止出入）
+        if (source.status == GroupStatus.CONFIRMED.value
+                or target.status == GroupStatus.CONFIRMED.value):
+            raise BizException(BizCode.GROUP_CONFIRMED_LOCKED)
+        # ② 未解决失败（失败且未忽略）禁止移动
+        failed = {AssessStatus.LAYER1_FAILED.value, AssessStatus.LAYER2_FAILED.value}
+        if photo.assess_status in failed and not photo.assess_error_ignored:
+            raise BizException(BizCode.PHOTO_MOVE_BLOCKED_BY_FAILURE)
+        # ③ 非 SUCCESS（未评测 / 已忽略失败）禁止移入已评测组
+        if (photo.assess_status != AssessStatus.SUCCESS.value
+                and target.status == GroupStatus.ASSESSED.value):
+            raise BizException(BizCode.PHOTO_MOVE_TARGET_ASSESSED)
+
+        # ⑤ 放行：只改归属
+        photo.group_key = target_group_key
+        self._photos.update_many([photo])
+        # 移动改变了源组与目标组的成员 → 两组的进行中 PK 擂台都已过期，清除（顺带清掉空源组的孤儿状态）
+        self._pk_states.delete(project_id, source_key)
+        self._pk_states.delete(project_id, target_group_key)
+        # 源组被拖空 → 删除空组
+        if not self._photos.by_group(project_id, source_key):
+            self._groups.delete(project_id, source_key)
+        return self.get_detail(project_id)
+
     def get_detail(self, project_id: int) -> ProjectDetailResponse:
         project = self._require_project(project_id)
         photos = self._photos.by_project(project_id)
@@ -625,6 +667,7 @@ class ProjectService:
             ),
             photo_paths=[p.workspace_path for p in photos],
             photo_names=[p.original_rel_path or p.filename for p in photos],
+            photo_ids=[p.id for p in photos],
         )
 
     @staticmethod

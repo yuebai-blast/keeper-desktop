@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from ..container import Container
 from ..request.project_request import (
     IgnoreFailuresRequest,
+    MovePhotoRequest,
     PkChooseRequest,
     PkStartRequest,
     ProjectCreateRequest,
@@ -166,6 +167,18 @@ def confirm_all(
 ) -> ProjectDetailResponse:
     """一键通过：未评测的组会触发层②大模型（可能 503/502）。"""
     return svc.confirm_all(project_id)
+
+
+@router.post("/{project_id}/photos/{photo_id}/move", response_model=ProjectDetailResponse)
+@inject
+def move_photo(
+    project_id: int,
+    photo_id: int,
+    req: MovePhotoRequest,
+    svc: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetailResponse:
+    """把一张照片移到目标组（只改归属）。已确认锁定/未解决失败/未评入已评 各自报业务码。"""
+    return svc.move_photo(project_id, photo_id, req.target_group_key)
 
 
 @router.get("/{project_id}/assess/progress", response_model=AssessProgress)

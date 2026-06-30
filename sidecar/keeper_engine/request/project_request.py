@@ -71,3 +71,9 @@ class IgnoreFailuresRequest(BaseModel):
     """忽略评测失败（解除对本组裁决的阻塞）。photo_id 为 None=全部失败图。"""
 
     photo_id: int | None = None
+
+
+class MovePhotoRequest(BaseModel):
+    """把一张照片移到目标组（只改归属，保留全部明细）。"""
+
+    target_group_key: str = Field(description="目标瞬间组 key（如 g2）")

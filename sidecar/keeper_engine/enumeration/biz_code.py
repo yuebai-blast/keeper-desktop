@@ -45,6 +45,10 @@ class BizCode(Enum):
     GROUPS_NOT_ALL_CONFIRMED = (410007, "还有未确认的分组，无法完成")  # 原 400
     GROUP_HAS_UNRESOLVED_FAILURES = (410008, "本组还有未处理的评测失败，请先重试或忽略")  # 原 409
     INVALID_GUARANTEE_PARAMS = (410009, "保底参数非法")  # 原 400：百分比不在 [1,100] 或固定值 <1
+    PHOTO_NOT_FOUND = (410010, "照片不存在")                  # 原 404
+    PHOTO_MOVE_TARGET_ASSESSED = (410011, "目标分组已评测，无法移入未评测的照片")  # 原 409
+    GROUP_CONFIRMED_LOCKED = (410012, "分组已确认并锁定，无法移动其照片")  # 原 409
+    PHOTO_MOVE_BLOCKED_BY_FAILURE = (410013, "照片有未处理的评测失败，请先重试或忽略再移动")  # 原 409
 
     def __init__(self, code: int, message: str) -> None:
         self.code = code

@@ -41,6 +41,15 @@ class PkStateMapper:
             session.refresh(row)
             return row
 
+    def delete(self, project_id: int, group_key: str) -> None:
+        """删单个组的 PK 状态行（移组改变组成员后清除该组过期擂台状态）。"""
+        with self._db.session() as session:
+            session.exec(delete(PkState).where(
+                PkState.project_id == project_id,
+                PkState.group_key == group_key,
+            ))
+            session.commit()
+
     def delete_by_project(self, project_id: int) -> None:
         """删除该项目的全部 PK 状态行（删项目时清理）。"""
         with self._db.session() as session:

@@ -5,7 +5,26 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { thumbnailUrl } from "../api";
 import Lightbox from "./Lightbox.vue";
 
-const props = defineProps<{ paths: string[]; labels?: string[] }>();
+const props = withDefaults(
+  defineProps<{
+    paths: string[];
+    labels?: string[];
+    ids?: number[]; // 与 paths 平行：各缩略图的 photo_id（拖拽移组用）
+    sourceGroupKey?: string; // 这些缩略图所属组的 key
+    canDrag?: boolean; // 是否允许从本组拖出（已确认/已处理组传 false 锁定）
+  }>(),
+  { canDrag: false },
+);
+
+// 开始拖拽：把 photoId + 源组 key 写入 dataTransfer，供目标卡片放置时读取。
+function onDragStart(i: number, e: DragEvent) {
+  if (!props.canDrag || !props.ids || !e.dataTransfer) return;
+  e.dataTransfer.setData(
+    "application/x-keeper-photo",
+    JSON.stringify({ photoId: props.ids[i], sourceGroupKey: props.sourceGroupKey }),
+  );
+  e.dataTransfer.effectAllowed = "move";
+}
 
 const THUMB_H = 84; // 单行缩略图高度（px），同步 .strip max-height / .thumb height
 
@@ -50,6 +69,8 @@ watch(() => props.paths, () => nextTick(measure));
         v-for="(p, i) in paths"
         :key="p"
         class="thumb"
+        :draggable="canDrag"
+        @dragstart="onDragStart(i, $event)"
         @click="zoom(i, $event)"
       >
         <img :src="thumbnailUrl(p, 256)" loading="lazy" alt="" />

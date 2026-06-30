@@ -39,6 +39,15 @@ class PhotoGroupMapper:
             session.refresh(merged)
             return merged
 
+    def delete(self, project_id: int, group_key: str) -> None:
+        """删单个组行（移组把源组拖空后清理空组）。"""
+        with self._db.session() as session:
+            session.exec(delete(PhotoGroup).where(
+                PhotoGroup.project_id == project_id,
+                PhotoGroup.group_key == group_key,
+            ))
+            session.commit()
+
     def delete_by_project(self, project_id: int) -> None:
         """删除该项目的全部分组行（删项目时清理）。"""
         with self._db.session() as session:

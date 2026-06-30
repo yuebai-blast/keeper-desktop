@@ -58,6 +58,7 @@ class GroupSummary(BaseModel):
     failed_count: int = 0  # 评测失败且未忽略的张数（>0 时本组裁决被锁）
     photo_paths: list[str] = Field(default_factory=list)  # 组内照片的 workspace 路径（供列表页缩略图预览）
     photo_names: list[str] = Field(default_factory=list)  # 与 photo_paths 平行：原始相对路径（带原文件名，供展示）
+    photo_ids: list[int] = Field(default_factory=list)  # 与 photo_paths 平行：照片主键（供前端发起移组）
 
 
 class PhotoView(BaseModel):

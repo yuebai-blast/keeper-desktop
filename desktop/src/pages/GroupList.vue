@@ -16,6 +16,21 @@ const pid = computed(() => Number(props.id));
 const showConfirmAll = ref(false);
 const showSubmit = ref(false);
 
+const dropOverKey = ref<string | null>(null);
+
+// 放置：读取被拖照片，落到目标组（同组忽略）；成功后 store 已刷新 detail。
+async function onDrop(targetKey: string, e: DragEvent) {
+  dropOverKey.value = null;
+  const raw = e.dataTransfer?.getData("application/x-keeper-photo");
+  if (!raw) return;
+  const { photoId, sourceGroupKey } = JSON.parse(raw) as {
+    photoId: number;
+    sourceGroupKey: string;
+  };
+  if (sourceGroupKey === targetKey) return; // 拖回原组：无操作
+  await store.movePhoto(pid.value, photoId, targetKey);
+}
+
 onMounted(async () => {
   await store.loadProject(pid.value);
   // 恢复一个还停在「分组中」的项目：补跑分组
@@ -72,7 +87,12 @@ async function doSubmit() {
           v-for="g in pendingGroups"
           :key="g.group_key"
           class="card"
+          :class="{ 'card--drop': dropOverKey === g.group_key }"
           @click="router.push(`/projects/${pid}/groups/${g.group_key}`)"
+          @dragover.prevent
+          @dragenter.prevent="dropOverKey = g.group_key"
+          @dragleave="dropOverKey = (dropOverKey === g.group_key ? null : dropOverKey)"
+          @drop="onDrop(g.group_key, $event)"
         >
           <div class="title">
             <span class="gname">组 {{ indexOf(g.group_key) + 1 }}</span>
@@ -84,7 +104,13 @@ async function doSubmit() {
             <span v-if="g.location">{{ g.location }}</span>
             <span v-if="fmtTimeRange(g.time_start, g.time_end)">· {{ fmtTimeRange(g.time_start, g.time_end) }}</span>
           </div>
-          <GroupThumbs :paths="g.photo_paths" :labels="g.photo_names" />
+          <GroupThumbs
+            :paths="g.photo_paths"
+            :labels="g.photo_names"
+            :ids="g.photo_ids"
+            :source-group-key="g.group_key"
+            :can-drag="true"
+          />
         </li>
       </ul>
     </section>
@@ -180,6 +206,7 @@ async function doSubmit() {
   transition: border-color 0.18s, transform 0.1s;
 }
 .card:hover { border-color: var(--amber); transform: translateY(-1px); }
+.card--drop { border-color: var(--amber-bright); background: var(--surface-2); }
 .title { display: flex; align-items: center; gap: 11px; }
 .gname { font-family: var(--font-display); font-size: 18px; }
 .count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }

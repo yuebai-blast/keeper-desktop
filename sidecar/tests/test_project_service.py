@@ -702,3 +702,201 @@ def test_assess_kept_count_follows_project_guarantee_fixed(tmp_path):
     kept_hi = _count_kept_in_group(set_hi, p_hi.id, "g1")
     assert kept_lo == 1   # N = max(ceil(5×0.2)=1, 1) = 1
     assert kept_hi == 3   # N = max(ceil(5×0.2)=1, 3) = 3
+
+
+def test_photo_mapper_get_and_group_delete(svc, tmp_path):
+    """mapper 新增：按 id 取单张照片；按 group_key 删单个组。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    pid = service.create("mapper试", str(src)).id
+    service.group(pid)  # FakeGrouping → g1 / g2
+
+    g1_photos = service._photos.by_group(pid, "g1")
+    one = g1_photos[0]
+    # get：命中返回该张；未命中返回 None
+    assert service._photos.get(pid, one.id).id == one.id
+    assert service._photos.get(pid, 999999) is None
+    # delete：删 g1 组行后，by_project 的组里不再含 g1（照片行不受影响）
+    service._groups.delete(pid, "g1")
+    keys = {g.group_key for g in service._groups.by_project(pid)}
+    assert "g1" not in keys and "g2" in keys
+
+
+def test_group_summary_exposes_aligned_photo_ids(svc, tmp_path):
+    """GroupSummary.photo_ids 与 photo_paths 同序对齐，供前端缩略图发起移动。"""
+    service, _ = svc
+    src = _make_source(tmp_path, 4)
+    pid = service.create("ids试", str(src)).id
+    service.group(pid)
+
+    detail = service.get_detail(pid)
+    g1 = next(g for g in detail.groups if g.group_key == "g1")
+    by_path = {p.workspace_path: p.id for p in service._photos.by_group(pid, "g1")}
+    assert len(g1.photo_ids) == len(g1.photo_paths)
+    assert g1.photo_ids == [by_path[path] for path in g1.photo_paths]
+
+
+# ── 照片移组（move_photo）──────────────────────────────────────────────────────
+
+
+def _project_with_two_groups(service, tmp_path, n=4):
+    src = _make_source(tmp_path, n)
+    pid = service.create(f"移组{n}", str(src)).id
+    service.group(pid)  # → g1 / g2
+    return pid
+
+
+def test_move_assessed_photo_between_assessed_groups_keeps_scores(tmp_path):
+    """case 3：已评图 → 已评组，放行，只改 group_key，评分原样保留。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    service.assess_group(pid, "g1")
+    service.assess_group(pid, "g2")
+    p = service._photos.by_group(pid, "g1")[0]
+    before_local, before_llm = p.local_score, p.llm_score
+
+    service.move_photo(pid, p.id, "g2")
+
+    moved = service._photos.get(pid, p.id)
+    assert moved.group_key == "g2"
+    assert moved.local_score == before_local and moved.llm_score == before_llm
+
+
+def test_move_unassessed_into_pending_group_allowed(tmp_path):
+    """case 1/2：未评/已评图 → 未评组（PENDING），放行。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)  # 两组都 PENDING
+    p = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, p.id, "g2")
+    assert service._photos.get(pid, p.id).group_key == "g2"
+
+
+def test_move_unassessed_into_assessed_group_rejected(tmp_path):
+    """case 4：未评图 → 已评组，拒绝 PHOTO_MOVE_TARGET_ASSESSED。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    service.assess_group(pid, "g2")  # g2 ASSESSED；g1 仍 PENDING（照片 NOT_ASSESSED）
+    p = service._photos.by_group(pid, "g1")[0]
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, p.id, "g2")
+    assert ei.value.biz == BizCode.PHOTO_MOVE_TARGET_ASSESSED
+
+
+def test_move_into_confirmed_group_rejected(tmp_path):
+    """① 已确认锁定（目标）：拒绝 GROUP_CONFIRMED_LOCKED。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    service.assess_group(pid, "g2")
+    service.confirm_group(pid, "g2")
+    p = service._photos.by_group(pid, "g1")[0]
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, p.id, "g2")
+    assert ei.value.biz == BizCode.GROUP_CONFIRMED_LOCKED
+
+
+def test_move_out_of_confirmed_group_rejected(tmp_path):
+    """① 已确认锁定（源）：拒绝 GROUP_CONFIRMED_LOCKED。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    service.assess_group(pid, "g1")
+    service.confirm_group(pid, "g1")
+    p = service._photos.by_group(pid, "g1")[0]
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, p.id, "g2")
+    assert ei.value.biz == BizCode.GROUP_CONFIRMED_LOCKED
+
+
+def test_move_unresolved_failure_rejected(tmp_path):
+    """② 未解决失败：拒绝 PHOTO_MOVE_BLOCKED_BY_FAILURE。"""
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    service.assess_group(pid, "g1")  # g1 最后一张 LAYER1_FAILED、未忽略
+    bad = next(p for p in service._photos.by_group(pid, "g1")
+               if p.assess_status == "LAYER1_FAILED")
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, bad.id, "g2")
+    assert ei.value.biz == BizCode.PHOTO_MOVE_BLOCKED_BY_FAILURE
+
+
+def test_move_ignored_failure_into_pending_allowed(tmp_path):
+    """case 5 细化：已忽略的失败图视为已解决，移入 PENDING 组放行。"""
+    service, _ = _build_service(tmp_path, FakeAssessLastFails(), FakeScoring())
+    src = _make_source(tmp_path, 6)
+    pid = service.create("忽略移组", str(src)).id
+    service.group(pid)                 # g1=3 张、g2=3 张
+    service.assess_group(pid, "g1")    # g1 最后一张 LAYER1_FAILED
+    bad = next(p for p in service._photos.by_group(pid, "g1")
+               if p.assess_status == "LAYER1_FAILED")
+    service.ignore_failures(pid, "g1", bad.id)  # 置 ignored，解阻塞
+    service.move_photo(pid, bad.id, "g2")        # g2 仍 PENDING → 放行
+    assert service._photos.get(pid, bad.id).group_key == "g2"
+
+
+def test_move_same_group_is_noop(tmp_path):
+    """④ 同组：no-op，成功返回、group_key 不变、不抛错。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    p = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, p.id, "g1")
+    assert service._photos.get(pid, p.id).group_key == "g1"
+
+
+def test_move_emptying_source_deletes_it(tmp_path):
+    """⑤ 放行后源组被拖空（0 张）→ 删除空组。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 2)  # g1 一张、g2 一张
+    only = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, only.id, "g2")
+    keys = {g.group_key for g in service._groups.by_project(pid)}
+    assert "g1" not in keys and "g2" in keys
+
+
+def test_move_photo_not_found(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, 999999, "g2")
+    assert ei.value.biz == BizCode.PHOTO_NOT_FOUND
+
+
+def test_move_target_group_not_found(tmp_path):
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)
+    p = service._photos.by_group(pid, "g1")[0]
+    with pytest.raises(BizException) as ei:
+        service.move_photo(pid, p.id, "g_missing")
+    assert ei.value.biz == BizCode.GROUP_NOT_FOUND
+
+
+def test_move_clears_source_pk_state(tmp_path):
+    """移组后源组的进行中 PK 状态应被清除（成员已变、擂台已过期）。
+    用 4 张（g1/g2 各 2 张），移后 g1 仍剩 1 张非空，不触发删组，
+    专门验证「源组非空分支」下 PkState 也被清除。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)  # g1=2 张，g2=2 张
+    # 给 g1 起一局 PK 擂台
+    pool = [p.workspace_path for p in service._photos.by_group(pid, "g1")]
+    service._pk.start(pid, "g1", pool, False)
+    # 移动前 PkState 存在
+    assert service._pk_states.get(pid, "g1") is not None
+    # 把 g1 一张移到 g2（g1 仍剩 1 张，非空）
+    photo = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, photo.id, "g2")
+    # 移动后 g1 的 PK 状态应被清除
+    assert service._pk_states.get(pid, "g1") is None
+
+
+def test_move_clears_target_pk_state(tmp_path):
+    """移组后目标组的进行中 PK 状态应被清除（新成员进入、擂台已过期）。"""
+    service, _ = _build_service(tmp_path, FakeAssess(), FakeScoring())
+    pid = _project_with_two_groups(service, tmp_path, 4)  # g1=2 张，g2=2 张
+    # 给 g2 起一局 PK 擂台
+    pool = [p.workspace_path for p in service._photos.by_group(pid, "g2")]
+    service._pk.start(pid, "g2", pool, False)
+    # 移动前 g2 PkState 存在
+    assert service._pk_states.get(pid, "g2") is not None
+    # 把 g1 一张移到 g2
+    photo = service._photos.by_group(pid, "g1")[0]
+    service.move_photo(pid, photo.id, "g2")
+    # 移动后 g2 的 PK 状态应被清除
+    assert service._pk_states.get(pid, "g2") is None

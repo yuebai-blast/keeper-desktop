@@ -34,6 +34,15 @@ class ProjectPhotoMapper:
             )
             return list(session.exec(stmt.order_by(ProjectPhoto.id)))
 
+    def get(self, project_id: int, photo_id: int) -> ProjectPhoto | None:
+        """按项目 + 主键取单张照片（移组时定位被拖照片）。"""
+        with self._db.session() as session:
+            stmt = select(ProjectPhoto).where(
+                ProjectPhoto.project_id == project_id,
+                ProjectPhoto.id == photo_id,
+            )
+            return session.exec(stmt).first()
+
     def unresolved_failures(self, project_id: int, group_key: str) -> list[ProjectPhoto]:
         """该组里「评测失败且未被忽略」的照片（用于阻塞裁决）。"""
         with self._db.session() as session:
