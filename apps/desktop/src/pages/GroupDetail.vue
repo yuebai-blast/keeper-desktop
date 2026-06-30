@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from "vue";
 import { thumbnailUrl, type PhotoView } from "../api";
 import Arena from "../components/Arena.vue";
+import Lightbox from "../components/Lightbox.vue";
 import MetricLegend from "../components/MetricLegend.vue";
 import PhotoStats from "../components/PhotoStats.vue";
 import { useEngineStore } from "../stores/engine";
@@ -17,6 +18,16 @@ const pid = computed(() => Number(props.id));
 
 const arenaOpen = ref(false);
 const arenaRestart = ref(true);
+
+// 大图预览：在某一分区（待评测/通过/未通过）内按点击位置打开，自带左右切换
+const lightbox = ref<{ paths: string[]; labels: string[]; at: number } | null>(null);
+function openLightbox(list: PhotoView[], i: number) {
+  lightbox.value = {
+    paths: list.map((p) => p.workspace_path),
+    labels: list.map((p) => p.filename),
+    at: i,
+  };
+}
 
 onMounted(() => store.loadGroup(pid.value, props.gk));
 
@@ -78,7 +89,14 @@ function rescue(p: PhotoView) {
     <!-- 未评测：评测入口 -->
     <div v-if="!assessed" class="pre">
       <div class="thumbs">
-        <img v-for="p in photos" :key="p.id" :src="thumbnailUrl(p.workspace_path)" loading="lazy" alt="" />
+        <img
+          v-for="(p, i) in photos"
+          :key="p.id"
+          :src="thumbnailUrl(p.workspace_path)"
+          loading="lazy"
+          alt=""
+          @click="openLightbox(photos, i)"
+        />
       </div>
       <button class="btn btn--primary lg" :disabled="store.busy || !engine.ready" @click="assess">
         {{ store.busy ? "评测中…" : "用模型评测本组" }}
@@ -116,9 +134,10 @@ function rescue(p: PhotoView) {
       <h2 class="sect">通过 <small>{{ passed.length }}</small></h2>
       <p v-if="!passed.length" class="empty">暂无通过的照片。</p>
       <div class="cards">
-        <article v-for="p in passed" :key="p.id" class="pcard kept">
-          <figure>
+        <article v-for="(p, i) in passed" :key="p.id" class="pcard kept">
+          <figure class="shot" @click="openLightbox(passed, i)">
             <img :src="thumbnailUrl(p.workspace_path, 512)" loading="lazy" alt="" />
+            <button class="zoom" title="放大预览" @click.stop="openLightbox(passed, i)">⤢</button>
             <figcaption>{{ basename(p.filename) }}</figcaption>
           </figure>
           <div class="body">
@@ -133,9 +152,10 @@ function rescue(p: PhotoView) {
       <h2 class="sect">未通过 <small>{{ failed.length }}</small></h2>
       <p v-if="!failed.length" class="empty">没有被淘汰的照片。</p>
       <div class="cards">
-        <article v-for="p in failed" :key="p.id" class="pcard out" :class="{ rescued: p.rescued, failed: !!p.assess_error }">
-          <figure>
+        <article v-for="(p, i) in failed" :key="p.id" class="pcard out" :class="{ rescued: p.rescued, failed: !!p.assess_error }">
+          <figure class="shot" @click="openLightbox(failed, i)">
             <img :src="thumbnailUrl(p.workspace_path, 512)" loading="lazy" alt="" />
+            <button class="zoom" title="放大预览" @click.stop="openLightbox(failed, i)">⤢</button>
             <figcaption>{{ basename(p.filename) }}</figcaption>
             <span v-if="p.assess_error" class="etag">评测失败</span>
             <span v-else-if="p.rescued" class="rtag">已救回</span>
@@ -170,6 +190,14 @@ function rescue(p: PhotoView) {
     :photos="photos"
     @close="onArenaClose"
   />
+
+  <Lightbox
+    v-if="lightbox"
+    :paths="lightbox.paths"
+    :labels="lightbox.labels"
+    :start="lightbox.at"
+    @close="lightbox = null"
+  />
 </template>
 
 <style scoped>
@@ -185,7 +213,8 @@ function rescue(p: PhotoView) {
 
 .pre { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
 .pre .thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
-.pre .thumbs img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: var(--surface-2); }
+.pre .thumbs img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: var(--surface-2); cursor: zoom-in; transition: filter 0.18s ease; }
+.pre .thumbs img:hover { filter: brightness(0.78); }
 .btn.lg { padding: 12px 24px; font-size: 14.5px; }
 .hint { margin: 0; color: var(--ink-faint); font-size: 12.5px; }
 
@@ -222,7 +251,26 @@ function rescue(p: PhotoView) {
   word-break: break-all;
 }
 .pcard figure { margin: 0; position: relative; flex: none; width: 200px; }
-.pcard img { width: 200px; height: 150px; object-fit: cover; border-radius: 8px; background: var(--surface-2); display: block; }
+.pcard figure.shot { cursor: zoom-in; }
+.pcard img { width: 200px; height: 150px; object-fit: cover; border-radius: 8px; background: var(--surface-2); display: block; transition: filter 0.18s ease; }
+.pcard figure.shot:hover img { filter: brightness(0.7); }
+/* 悬停露出的放大按钮，与组列表缩略图条一致 */
+.pcard .zoom {
+  position: absolute;
+  top: 75px; left: 100px; /* 居中于 200×150 缩略图 */
+  transform: translate(-50%, -50%) scale(0.85);
+  width: 34px; height: 34px;
+  font-size: 18px; line-height: 1;
+  color: var(--ink);
+  background: rgba(20, 16, 10, 0.7);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  cursor: zoom-in;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease, border-color 0.18s;
+}
+.pcard figure.shot:hover .zoom { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.pcard .zoom:hover { border-color: var(--amber); color: var(--amber-bright); }
 .pcard figcaption { margin-top: 5px; font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); word-break: break-all; }
 .rtag {
   position: absolute; top: 8px; left: 8px;
