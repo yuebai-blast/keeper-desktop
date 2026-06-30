@@ -35,6 +35,8 @@ dir = "sidecar"
 usage = '''
 flag "--frozen" help="按 uv.lock 精确安装、不更新 lock（CI/打包用）"
 '''
+# 显式 bash：run 用了 ${usage_frozen:+…} 参数展开，Windows runner 上 mise 默认 shell 非 bash，不写会原样传给 uv 报错。
+shell = "bash -c"
 run = "uv sync ${usage_frozen:+--frozen}"
 
 [tasks.install-desktop]
@@ -43,6 +45,8 @@ dir = "desktop"
 usage = '''
 flag "--frozen" help="按 pnpm-lock.yaml 精确安装、不更新 lock（CI/打包用）"
 '''
+# 显式 bash：run 用了 ${usage_frozen:+…} 参数展开，Windows runner 上 mise 默认 shell 非 bash，不写会原样传给 pnpm 报错。
+shell = "bash -c"
 run = "pnpm install ${usage_frozen:+--frozen-lockfile}"
 
 # —— 启动 ——
