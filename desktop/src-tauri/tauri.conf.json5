@@ -30,7 +30,12 @@
         "width": 1100,
         "height": 720,
         "minWidth": 880,             // 窗口最小尺寸，防止布局被压垮
-        "minHeight": 600
+        "minHeight": 600,
+        // 关掉 Tauri webview 自带的「OS 级文件拖放处理器」（默认开启）。它会拦截 webview 内的
+        // 指针/拖拽事件，导致前端 HTML5 拖放（分组列表页缩略图拖动移组）「有拖拽光标却拖不动」。
+        // 官方文档明确：要在前端用 HTML5 drag&drop（尤其 Windows）必须关掉它。本应用选目录走
+        // pick_folder 对话框、不依赖 OS 文件拖放事件，关掉无副作用。
+        "dragDropEnabled": false
       }
     ],
     "security": {
